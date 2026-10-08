@@ -43,7 +43,7 @@ async function call(path, opts = {}) {
   return res;
 }
 const getJson = async (path) => (await call(path)).json();
-const query = () => new URLSearchParams({ mode: $('f-mode').value, character: $('f-character').value }).toString();
+const query = () => new URLSearchParams({ mode: $('f-mode').value, character: $('f-character').value, phase: $('f-phase').value }).toString();
 
 // 툴팁: data-tip이 붙은 요소에 마우스를 올리거나 포커스하면 표시
 const tip = $('tip');
@@ -115,7 +115,7 @@ const tile = (big, sub) => h('div', { class: 'tile' }, h('div', { class: 'big' }
 const mdsd = (d) => (d.n ? `${num(d.mean, 2)} (${num(d.sd, 2)})` : '—');
 
 // ---------- 통계 화면 ----------
-function renderAnalysis(a) {
+function renderAnalysis(a, research) {
   const n = a.n;
   const end = Object.fromEntries(n.ends.map((e) => [e.id, e.count]));
   const summary = h('div', { class: 'tiles' },
@@ -181,7 +181,215 @@ function renderAnalysis(a) {
     h('h2', {}, '믿음 변화'), beliefCharts, beliefStats,
     h('h2', {}, '돌아온 말과 적용'), judge, cross,
     h('h2', {}, '설문'), survey,
+    ...(research ? renderResearchPanels(research) : []),
   );
+}
+
+// ---------- RQ2 추가 표·제외 보고 (통계 탭) ----------
+const VERDICT_KO = { accept: '수용', modify: '수정', hold: '보류', reject: '거부' };
+const BAND_KO = { low: '1~2', mid: '3', high: '4~5' };
+function band3(tbl, rowName, colName) {
+  return table([`${rowName} \\ ${colName}`, ...Object.values(BAND_KO)], Object.keys(BAND_KO).map((r) => [`${rowName} ${BAND_KO[r]}`, ...Object.keys(BAND_KO).map((c) => tbl[r][c])]), [1, 2, 3]);
+}
+
+function renderResearchPanels(r) {
+  const q = r.rq2;
+  const rp = r.reports;
+  return [
+    h('h2', {}, 'RQ2 보조 분석'),
+    h('div', { class: 'grid2' },
+      panel('"잘 담겼다" + 수정·보류·거부', `S6에서 뜻이 잘 담겼다고 했지만 그대로 수용하지 않은 사례 (ok 분석 가능 ${r.rq2.fidelityVerdictN}명 중 ${q.goodButNot.length}명).`,
+        q.goodButNot.length ? table(['참가자', '판단', '이유'], q.goodButNot.map((x) => [x.pid, VERDICT_KO[x.verdict], x.reason])) : h('p', { class: 'muted' }, '없음')),
+      panel('인터뷰 주제', '세션 기록의 인터뷰 메모에서 입력한 주제별 참가자 수.',
+        q.themes.length ? hbar(q.themes.map((t) => ({ label: t.theme, count: t.participants }))) : h('p', { class: 'muted' }, '아직 입력된 주제가 없어요')),
+    ),
+    h('div', { class: 'grid2' },
+      panel('q9 (변환문 충실) × q2 (적용 가능)', `ok 경로에서 두 문항을 모두 보여 주고 답한 ${q.q9q2.n}명. 3은 중립. 사례 탐색용이며 검정에 쓰지 않습니다.`,
+        band3(q.q9q2.table, 'q9', 'q2'),
+        h('p', { class: 'note' }, `충실도는 높지만 적용 가능성은 낮음(q9 4~5 & q2 1~2): ${q.q9q2.discordant.map((x) => x.pid).join(', ') || '없음'}`)),
+      panel('q10 (직접 판단) × q11 (유도감)', `두 문항에 답한 ${q.q10q11.n}명 (ok 경로).`,
+        band3(q.q10q11.table, 'q10', 'q11'),
+        h('p', { class: 'note' }, `둘 다 높음(4~5): ${q.q10q11.bothHigh.map((x) => x.pid).join(', ') || '없음'}`)),
+    ),
+    h('h2', {}, '분석 제외·종료 보고'),
+    panel('주 분석 대상', '분석 가능 = 완료 & 기준 D 제외 아님. 경험 없음·그만두기·진행 중은 주 분석에서 빠집니다.',
+      table(['구분', '인원'], [
+        ['완료', rp.completed], ['분석 가능', rp.analyzable], ['분석 가능 중 변환 ok', rp.okAnalyzable],
+        ['기준 D 제외', `${rp.excludedD} (그중 AI가 not_advice로 판정한 적 있음 ${rp.excludedDNotAdvice})`],
+        ['경험 없음 종료', rp.noExperience],
+        ['그만두기', `${rp.withdrawn}${rp.withdrawnStages.length ? ` (${rp.withdrawnStages.map((w) => `${w.stage} ${w.count}`).join(', ')})` : ''}`],
+        ['진행 중', rp.inProgress],
+      ], [1]),
+      rp.excludedList.length ? h('p', { class: 'note' }, `제외: ${rp.excludedList.map((x) => `${x.pid}${x.reason ? `(${x.reason})` : ''}`).join(', ')}`) : ''),
+  ];
+}
+
+// ---------- RQ1 결과 ----------
+const pctN = (a, b) => (b ? `${a} (${Math.round((a / b) * 100)}%)` : `${a}`);
+function renderRq1Results(r) {
+  const x = r.rq1;
+  const primary = h('div', { class: 'grid3' }, x.primary.map((p) => panel(p.label, `대상 ${p.eligible}명 중 확정 점수 ${p.coded}명`, hbar(p.dist.map((d) => ({ label: `${d.level}점`, count: d.count })), p.coded))));
+  const aux = panel('보조: S5 → S9 방향', '과제 요구(S7·S8)로도 설명될 수 있어 인과로 해석하지 않습니다. 감소를 성공으로 보지 않습니다.',
+    table(['지표', 'n', '상승', '유지', '하락'], [
+      ['재검토 수준 (A)', x.auxiliary.reexam.n, ...x.auxiliary.reexam.dist.map((d) => d.count)],
+      ['자기적용 수준 (B, ok)', x.auxiliary.selfApp.n, ...x.auxiliary.selfApp.dist.map((d) => d.count)],
+    ], [1, 2, 3, 4]),
+    h('p', { class: 'note' }, `믿음 정도 개인별 변화(사후−사전) 중앙값 ${num(x.auxiliary.beliefChangeMedian)} (n=${x.auxiliary.beliefN})`));
+  const aq = x.adviceQuality;
+  const quality = panel('C. 조언 질 × S8 자기적용 수준 (탐색)', `조언 질 확정 ${aq.coded}/${aq.eligible}명. 행: 조언 질, 열: S8 자기적용 점수(ok만).`,
+    hbar(aq.dist.map((d) => ({ label: `조언 질 ${d.level}`, count: d.count })), aq.coded),
+    table(['조언 질', '0', '1', '2', '3'], aq.bySelfApp.map((b) => [b.quality, ...b.dist.map((d) => d.count)]), [1, 2, 3, 4]));
+  const proc = panel('과정 지표 × S9 재검토 수준 (탐색)', '수정률 = S6에서 직접 고쳐 쓴 비율(ok), 근거 칸 = S7에서 글을 쓴 칸 수(0~2), 없음 비율 = "근거 부족" 체크 비율.',
+    table(['집단', 'n', '수정률', '근거 칸 평균', '없음 비율', '판단 (수용/수정/보류/거부)', '판단 바꿈', 'S7·S8 중앙값(초)'], x.process.map((p) => [
+      p.group, p.n, Number.isFinite(p.editRate) ? `${Math.round(p.editRate * 100)}% (n=${p.editN})` : '—', num(p.evidenceTextMean, 2),
+      Number.isFinite(p.noneRatio) ? `${Math.round(p.noneRatio * 100)}%` : '—', p.verdicts.map((v) => v.count).join(' / '), p.verdictChanges,
+      `${num(p.medianSeconds.S7, 0)} · ${num(p.medianSeconds.S8, 0)}`,
+    ]), [1]));
+  const people = panel('참가자별 점수', 'NA = 경로상 비해당(ok가 아니면 자기적용 없음), — = 아직 확정 점수 없음.',
+    table(['참가자', '경로', '재검토 S5→S9', '자기적용 S5→S9', 'S8 자기적용', '조언 질', '믿음 사전→사후'], x.prepost.map((p) => {
+      const v = (a) => (a === 'NA' ? 'NA' : a == null ? '—' : a);
+      return [p.pid, p.path, `${v(p.reexam_pre)} → ${v(p.reexam_post)}`, `${v(p.self_app_pre)} → ${v(p.self_app_post)}`, v(p.self_app_s8), v(p.advice_quality), `${v(p.belief_pre)} → ${v(p.belief_post)}`];
+    })));
+  const rel = panel('코더 간 일치도', '두 코더가 모두 점수를 매긴 항목 기준. 가중 κ는 이차 가중.',
+    table(['시트', '항목', '코더1', '코더2', '둘 다', '일치율', '가중 κ', '불일치(합의)', '미확정'], r.reliability.map((c) => [
+      c.label, c.items, c.progress.coder1, c.progress.coder2, c.n, num(c.agreement, 3), num(c.weightedKappa, 3), `${c.disagreements} (${c.resolved})`, c.unresolved,
+    ]), [1, 2, 3, 4, 5, 6, 7, 8]));
+  $('rq1-results').replaceChildren(h('h2', {}, 'RQ1 결과 (주 분석: S8·S9 수준 분포)'), primary, h('div', { class: 'grid2' }, aux, quality), proc, rel, people);
+}
+
+// ---------- RQ1 코딩 ----------
+const SHOW_LABELS = {
+  text: '해석', final_advice: '조언(final_advice)', shown_self: '처음 본 자기지향 문장', edited_self: '고쳐 쓴 문장(S6)', modified_text: '수정한 문장(S8)',
+  common: '공통점', difference: '차이점', verdict: '판단', reason: '이유', situation: '캐릭터 상황', facts: '대화에서 나온 사실', advice: '조언',
+};
+function showBlock(show) {
+  const pairs = [];
+  if (show.principles) for (const [k, v] of Object.entries(show.principles)) pairs.push([`원칙 기준 · ${SHOW_LABELS[k]}`, v]);
+  for (const [k, v] of Object.entries(show)) {
+    if (k === 'principles' || v === '' || v == null) continue;
+    pairs.push([SHOW_LABELS[k] || k, k === 'verdict' ? VERDICT_KO[v] : Array.isArray(v) ? v.join('\n') : v]);
+  }
+  return kv(pairs);
+}
+
+function rq1Card(it, sheet, coder, levels) {
+  const status = h('span', { class: 'saved' }, it.score != null ? '저장됨' : '');
+  const buttons = levels.map((l) => h('button', { type: 'button', class: it.score === l ? 'on' : '' }, `${l}점`));
+  const card = h('div', { class: `code-card${it.score != null ? ' done' : ''}` },
+    h('div', { class: 'id' }, it.blindId, status), showBlock(it.show),
+    it.coder1 != null ? h('div', { class: 'others' }, `코더 1: ${it.coder1}점 · 코더 2: ${it.coder2}점`) : '',
+    h('div', { class: 'scorebar' }, buttons));
+  levels.forEach((l, i) => buttons[i].addEventListener('click', async () => {
+    const score = it.score === l ? null : l; // 같은 점수를 다시 누르면 지움
+    status.textContent = '저장 중…';
+    try {
+      await call(`/api/admin/coding/${sheet}/code`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coder, blindId: it.blindId, score }) });
+      it.score = score;
+      buttons.forEach((b, j) => b.classList.toggle('on', levels[j] === score));
+      card.classList.toggle('done', score != null);
+      status.textContent = score != null ? '저장됨' : '지움';
+      loadRq1Results();
+    } catch (e) { status.textContent = e.message; }
+  }));
+  return card;
+}
+
+async function loadRq1Results() {
+  try {
+    const r = await getJson(`/api/admin/research?${query()}`);
+    renderRq1Results(r);
+    const sheet = $('rq1-sheet').value;
+    const coder = $('rq1-coder').value;
+    const c = r.reliability.find((x) => x.sheet === sheet);
+    if (c && coder !== 'final') $('rq1-progress').textContent = `${c.progress[coder]}/${c.items} 코딩함`;
+  } catch (e) { $('err').textContent = e.message; }
+}
+
+async function loadRq1() {
+  const sheet = $('rq1-sheet').value;
+  const coder = $('rq1-coder').value;
+  try {
+    const r = await getJson(`/api/admin/coding/${sheet}/items?coder=${coder}&${query()}`);
+    const c = r.criteria;
+    $('rq1-criteria').replaceChildren(h('summary', {}, `${c.title} — ${c.question}`),
+      h('ol', {}, Object.entries(c.levels).map(([k, v]) => h('li', {}, h('b', {}, k), ' ', v))),
+      h('ul', { class: 'muted' }, (c.notes || []).map((n) => h('li', {}, n))));
+    const items = $('rq1-todo').checked ? r.items.filter((it) => it.score == null) : r.items;
+    $('rq1-progress').textContent = coder === 'final' ? `불일치 ${r.items.length}건 중 합의 ${r.done}건` : `${r.done}/${r.total} 코딩함`;
+    $('rq1-items').replaceChildren(...(items.length ? items.map((it) => rq1Card(it, sheet, coder, r.levels))
+      : [h('p', { class: 'muted' }, coder === 'final' ? '두 코더가 다르게 본 항목이 없어요.' : r.total ? '모두 코딩했어요.' : '아직 대상이 없어요.')]));
+    loadRq1Results();
+  } catch (e) { $('err').textContent = e.message; }
+}
+
+// ---------- 세션 관리: 단계·제외·인터뷰 ----------
+let protocol = null;
+async function sessionManage(x) {
+  const phase = h('select', {}, h('option', { value: 'main' }, '본실험'), h('option', { value: 'pilot' }, '파일럿'));
+  phase.value = x.phase || 'pilot';
+  const excl = h('input', { type: 'checkbox' });
+  excl.checked = !!x.excluded?.excluded;
+  const reason = h('input', { type: 'text', placeholder: '제외 사유 (연구자 2인 합의 결과)', value: x.excluded?.reason || '' });
+  reason.value = x.excluded?.reason || '';
+  const msg = h('span', { class: 'saved' });
+  const save = h('button', { type: 'button', class: 'small' }, '저장');
+  save.addEventListener('click', async () => {
+    try {
+      await call(`/api/admin/sessions/${x.id}/meta`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phase: phase.value, excluded: excl.checked, reason: reason.value }) });
+      msg.textContent = '저장됨';
+      load();
+    } catch (e) { msg.textContent = e.message; }
+  });
+  const crit = await getJson('/api/admin/criteria');
+  const parts = [
+    h('h3', {}, '분석 관리'),
+    h('div', { class: 'inline-row' }, h('label', {}, '단계 ', phase), h('label', { class: 'check' }, excl, '기준 D로 분석 제외'), reason, save, msg),
+    h('p', { class: 'qhint' }, crit.D.text),
+  ];
+  if (x.endType === 'completed') parts.push(await interviewForm(x));
+  const tl = h('button', { type: 'button', class: 'secondary small' }, '이벤트 타임라인 내려받기');
+  tl.addEventListener('click', () => download(`/api/admin/sessions/${x.id}/timeline.txt`, false));
+  parts.push(h('div', { class: 'actions left' }, tl));
+  return h('div', {}, parts);
+}
+
+async function interviewForm(x) {
+  protocol ||= await getJson('/api/admin/interview-protocol');
+  const iv = x.interview || {};
+  const path = x.advice.outcome === 'ok' ? 'ok' : 'exception';
+  const qs = protocol.questions.filter((q) => q.path === 'common' || q.path === path);
+  const area = (v = '', ph = '') => { const t = h('textarea', { placeholder: ph }); t.value = v; return t; };
+  const text = (v = '', ph = '') => { const t = h('input', { type: 'text', placeholder: ph }); t.value = v; return t; };
+  const answers = Object.fromEntries(qs.map((q) => [q.id, area(iv.answers?.[q.id] || '', '요약')]));
+  const f = {
+    start: text(iv.start_time || '', '시작 (예: 14:05)'), end: text(iv.end_time || '', '종료'), researcher: text(iv.researcher_id || '', '연구자 ID'),
+    quotes: area(iv.quotes || '', '인용 (동의한 경우에만)'), missing: text(iv.missing_or_refusal || '', '무응답·거부 코드'),
+    followups: area(iv.followups || '', '추가 확인 질문과 사유 (최대 1~2개)'), themes: text((iv.themes || []).join(', '), '주제 (쉼표로 구분, RQ2 주제 집계에 쓰임)'),
+    rec: h('input', { type: 'checkbox' }), safety: h('input', { type: 'checkbox' }),
+  };
+  f.rec.checked = !!iv.recording_consent;
+  f.safety.checked = !!iv.safety_incident;
+  const msg = h('span', { class: 'saved' }, iv.updatedAt ? `저장됨 ${time(iv.updatedAt)}` : '');
+  const save = h('button', { type: 'button', class: 'small' }, '인터뷰 저장');
+  save.addEventListener('click', async () => {
+    try {
+      await call(`/api/admin/sessions/${x.id}/interview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        start_time: f.start.value, end_time: f.end.value, researcher_id: f.researcher.value, quotes: f.quotes.value, missing_or_refusal: f.missing.value,
+        followups: f.followups.value, themes: f.themes.value, recording_consent: f.rec.checked, safety_incident: f.safety.checked,
+        answers: Object.fromEntries(Object.entries(answers).map(([k, t]) => [k, t.value])),
+      }) });
+      msg.textContent = '저장됨';
+    } catch (e) { msg.textContent = e.message; }
+  });
+  return h('details', { class: 'criteria', open: !!x.interview },
+    h('summary', {}, `인터뷰 (${path === 'ok' ? 'ok 경로' : '예외 경로'}, 10~15분)`),
+    h('p', { class: 'qhint' }, `시작 안내: "${protocol.standard_opening}"`),
+    h('div', { class: 'inline-row' }, f.start, f.end, f.researcher),
+    h('div', { class: 'form-grid' }, qs.map((q) => h('div', {}, h('b', {}, `${q.id}. ${q.text}`), h('p', { class: 'qhint' }, q.rule), answers[q.id]))),
+    h('p', { class: 'qhint' }, protocol.followup_limit),
+    h('div', { class: 'form-grid' }, f.followups, f.quotes, f.missing, f.themes),
+    h('div', { class: 'inline-row' }, h('label', { class: 'check' }, f.rec, '녹음 동의'), h('label', { class: 'check' }, f.safety, '안전 사건 있음'), save, msg),
+    h('p', { class: 'qhint' }, `중단 안내: "${protocol.stop_phrase}"`));
 }
 
 // ---------- 세션 기록 ----------
@@ -191,12 +399,13 @@ const END = { completed: '완료', no_experience: '경험 없음', withdrawn: '�
 
 function renderSessions(rows) {
   const t = $('list');
-  t.replaceChildren(h('tr', {}, ['참가자', '시작', '단계', '캐릭터', '변환', '판단', '믿음 사전→사후', 'AI', '안전'].map((x) => h('th', {}, x))));
+  t.replaceChildren(h('tr', {}, ['참가자', '시작', '단계', '캐릭터', '변환', '판단', '믿음 사전→사후', 'AI', '표시'].map((x) => h('th', {}, x))));
   for (const r of [...rows].reverse()) {
     const tr = h('tr', { class: `click${r.id === selected ? ' sel' : ''}`, tabindex: 0, 'data-id': r.id },
-      [r.participantId, time(r.createdAt), r.endType ? END[r.endType] : `${stageName(r.stage)} 진행 중`, r.character, r.outcome || '', r.verdict || '',
+      [r.participantId, time(r.createdAt), r.endType ? END[r.endType] : `${stageName(r.stage)} 진행 중`, r.character, r.outcome || '', VERDICT_KO[r.verdict] || '',
         r.beliefPre != null ? `${r.beliefPre} → ${r.beliefPost ?? '…'}` : '', r.llmMode === 'mock' ? h('span', { class: 'badge' }, '모의') : '실제',
-        r.safety ? h('span', { class: 'badge warn' }, `감지 ${r.safety}`) : ''].map((x) => h('td', {}, x)));
+        h('span', {}, r.phase === 'pilot' ? h('span', { class: 'badge' }, '파일럿') : '', r.excluded ? h('span', { class: 'badge' }, '제외') : '', r.interview ? h('span', { class: 'badge' }, '인터뷰') : '',
+          r.safety ? h('span', { class: 'badge warn' }, `감지 ${r.safety}`) : '')].map((x) => h('td', {}, x)));
     const open = () => showDetail(r.id);
     tr.addEventListener('click', open);
     tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
@@ -256,6 +465,7 @@ async function showDetail(id) {
     ]),
     x.survey ? h('div', {}, h('h3', {}, '설문'), kv(x.survey.shown_items.map((q) => [q, x.survey[q]]))) : '',
     x.safetyFlags.length ? h('div', {}, h('h3', {}, '위험 키워드'), kv(x.safetyFlags.map((f) => [`${f.stage} ${f.field}`, `${f.rules.join(', ')} · ${time(f.at)}`]))) : '',
+    await sessionManage(x),
     h('details', {}, h('summary', {}, '전체 기록(JSON) 보기 — AI 호출 원문 포함'), h('pre', {}, JSON.stringify(x, null, 2))),
   ));
 }
@@ -278,7 +488,7 @@ async function load() {
     }
     $('login').hidden = !meta.needsToken;
     last = await getJson(`/api/admin/analysis?${query()}`);
-    renderAnalysis(last);
+    renderAnalysis(last, await getJson(`/api/admin/research?${query()}`));
     renderSessions(await getJson('/api/admin/sessions'));
     for (const id of ['toolbar', 'tabs']) $(id).hidden = false;
     $('updated').textContent = `${new Date().toLocaleTimeString('ko-KR')} 기준${last.n.excluded ? ` · 필터로 제외 ${last.n.excluded}개` : ''}${last.n.mock && last.n.mock < last.n.sessions ? ` · ⚠ 모의 세션 ${last.n.mock}개 섞임` : ''}`;
@@ -294,9 +504,9 @@ function schedule() {
   if ($('f-live').checked) timer = setTimeout(load, 15_000);
 }
 
-async function download(path) {
+async function download(path, withFilters = true) {
   try {
-    const res = await call(`${path}?${query()}`);
+    const res = await call(withFilters ? `${path}?${query()}` : path);
     const blob = await res.blob();
     const name = (res.headers.get('content-disposition') || '').match(/filename="?([^"]+)"?/)?.[1] || 'export';
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
@@ -310,7 +520,8 @@ async function saveReport() {
   if (!last) return;
   const css = (await Promise.all(['styles.css', 'admin.css'].map((f) => fetch(f).then((r) => r.text())))).join('\n');
   if (!$('rq3-results').childElementCount) await loadRq3Summary();
-  const body = h('div', {}, $('analysis').cloneNode(true), $('rq3-results').cloneNode(true));
+  if (!$('rq1-results').childElementCount) await loadRq1Results();
+  const body = h('div', {}, $('analysis').cloneNode(true), $('rq1-results').cloneNode(true), $('rq3-results').cloneNode(true));
   const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const info = [
     `생성: ${new Date(last.generatedAt).toLocaleString('ko-KR')}`,
@@ -442,7 +653,7 @@ async function loadRq3() {
 $('load').addEventListener('click', () => { meta = null; load(); });
 $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') { meta = null; load(); } });
 $('refresh').addEventListener('click', () => load());
-for (const id of ['f-mode', 'f-character']) $(id).addEventListener('change', () => { load(); if (!$('rq3').hidden) loadRq3(); });
+for (const id of ['f-mode', 'f-character', 'f-phase']) $(id).addEventListener('change', () => { load(); if (!$('rq3').hidden) loadRq3(); if (!$('rq1').hidden) loadRq1(); });
 $('f-live').addEventListener('change', schedule);
 document.querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', () => download(b.dataset.dl)));
 $('report').addEventListener('click', saveReport);
@@ -450,7 +661,9 @@ document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('cli
   document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
   if (b.dataset.tab === 'rq3') loadRq3();
+  if (b.dataset.tab === 'rq1') loadRq1();
 }));
 $('rq3-coder').addEventListener('change', loadRq3);
+for (const id of ['rq1-sheet', 'rq1-coder', 'rq1-todo']) $(id).addEventListener('change', loadRq1);
 $('rq3-todo').addEventListener('change', loadRq3);
 load();

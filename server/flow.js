@@ -72,7 +72,7 @@ function checker(stage) {
 
 export function newSession({ participantId, settings, content, prompt }) {
   const at = now();
-  return {
+  const s = {
     id: crypto.randomUUID(),
     participantId,
     createdAt: at,
@@ -81,6 +81,9 @@ export function newSession({ participantId, settings, content, prompt }) {
     endType: null,
     finishedAt: null,
     consentAt: at,
+    phase: settings.phase,
+    excluded: null,
+    interview: null,
     llmMode: settings.llmMode,
     provider: settings.provider,
     model: settings.model,
@@ -101,12 +104,26 @@ export function newSession({ participantId, settings, content, prompt }) {
     safetyFlags: [],
     events: [],
   };
+  addEvent(s, 'step_submit', { stage: 'S1' });
+  addEvent(s, 'step_enter', { stage: 'S2' });
+  return s;
+}
+
+// 이벤트 기록 (명세 §7 이벤트 종류). payload에는 자유서술 원문을 넣지 않는다(유형·선택값·글자 수·변경 여부만).
+export function addEvent(s, type, payload = {}, { eventId = null, clientTs = null, source = 'server' } = {}) {
+  s.events.push({ id: eventId || crypto.randomUUID(), type, stage: s.stage, payload, source, clientTs, at: now() });
+}
+
+const len = (v) => (typeof v === 'string' ? cpLength(v.trim()) : 0);
+function submitted(s, stage, texts = {}) {
+  addEvent(s, 'step_submit', { stage, lengths: Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, len(v)])) });
 }
 
 function moveTo(s, stage) {
   s.stage = stage;
   s.stageTimes[stage] = now();
   if (stage === 'S11') s.finishedAt = s.stageTimes.S11;
+  addEvent(s, 'step_enter', { stage });
 }
 
 export function requireStage(s, stage) {
@@ -135,6 +152,8 @@ export function doPick(s, d, content) {
   const has = c.oneOf('has_experience', d.has_experience, [true, false]);
   const relevance = has ? c.int('relevance', d.relevance, 1, 5) : null;
   s.pick.checks.push({ characterId: sc.id, hasExperience: has, relevance, at: now() });
+  submitted(s, 'S2');
+  if (!has) addEvent(s, 'experience_none', { character_id: sc.id });
   if (has) {
     s.pick.characterId = sc.id;
     s.pick.relevance = relevance;
@@ -153,6 +172,7 @@ export function doDialogue(s, d, content) {
   const choice = sc.dialogue.turns[turn - 1].choices.find((x) => x.id === d.choice_id);
   if (!choice) throw new FlowError('질문을 하나 골라 주세요', 422, { field: 'choice_id', reason: 'required' });
   s.dialogue.push({ turn, choiceId: choice.id, question: choice.text, reply: choice.reply, factIds: choice.fact_ids || [], at: now() });
+  addEvent(s, 'choice_select', { turn, choice_id: choice.id, fact_ids: choice.fact_ids || [] });
   if (turn === sc.dialogue.turns.length) moveTo(s, 'S4');
 }
 
@@ -166,7 +186,9 @@ export function applyTransform(s, advice, result) {
   const attempt = s.advice.attempts.length + 1;
   const rec = { n: attempt, text: advice, at: now(), ...result };
   s.advice.attempts.push(rec);
-  if (result.outcome === 'not_advice' && attempt === 1) return;
+  addEvent(s, 'advice_submit', { attempt, length: len(advice) });
+  addEvent(s, 'transform_result', { attempt, outcome: result.outcome, safety_source: result.safetySource || null, tries: result.calls?.length || 0 });
+  if (result.outcome === 'not_advice' && attempt === 1) { addEvent(s, 'advice_retry_prompt', { attempt }); return; }
   s.advice.outcome = result.outcome;
   s.advice.final = attempt;
   moveTo(s, 'S5');
@@ -183,6 +205,7 @@ export function doReflectPre(s, d) {
     view_pre: c.text('view_pre', d.view_pre),
     at: now(),
   };
+  submitted(s, 'S5', s.reflectPre);
   moveTo(s, s.advice.outcome === 'ok' ? 'S6' : 'S7');
 }
 
@@ -197,6 +220,7 @@ export function doReturned(s, d) {
   const edited = c.text('edited_self', d.edited_self, { optional: true });
   const shown = finalAttempt(s).result.self;
   s.returned = { shown_self: shown, fidelity, edited_self: edited, final_self: edited ?? shown, at: now() };
+  submitted(s, 'S6', { edited_self: edited });
   moveTo(s, 'S7');
 }
 
@@ -204,6 +228,7 @@ export function doEvidence(s, d) {
   requireStage(s, 'S7');
   const c = checker('S7');
   s.evidence = { ...c.textOrNone('evidence_for', 'for_none', d), ...c.textOrNone('evidence_against', 'against_none', d), at: now() };
+  submitted(s, 'S7', { evidence_for: s.evidence.evidence_for, evidence_against: s.evidence.evidence_against });
   moveTo(s, s.returned ? 'S8' : 'S9');
 }
 
@@ -220,6 +245,7 @@ export function doJudge(s, d) {
     target_text: s.returned.final_self,
     at: now(),
   };
+  submitted(s, 'S8', { common: s.judge.common, difference: s.judge.difference, reason: s.judge.reason, modified_text: s.judge.modified_text });
   moveTo(s, 'S9');
 }
 
@@ -227,6 +253,7 @@ export function doReflectPost(s, d) {
   requireStage(s, 'S9');
   const c = checker('S9');
   s.reflectPost = { view_post: c.text('view_post', d.view_post), belief_post: c.int('belief_post', d.belief_post, 0, 100), at: now() };
+  submitted(s, 'S9', { view_post: s.reflectPost.view_post });
   moveTo(s, 'S10');
 }
 
@@ -241,6 +268,7 @@ export function doSurvey(s, d) {
   }
   out.at = now();
   s.survey = out;
+  submitted(s, 'S10');
   s.endType = 'completed';
   moveTo(s, 'S11');
 }
@@ -248,14 +276,29 @@ export function doSurvey(s, d) {
 export function doWithdraw(s) {
   if (s.stage === 'S11') return;
   s.withdrawnAt = s.stage;
+  addEvent(s, 'withdraw_request', { stage: s.stage });
   s.endType = 'withdrawn';
   moveTo(s, 'S11');
 }
 
-const EVENT_TYPES = new Set(['view_stage', 'visibility', 'resume', 'fidelity_changed', 'verdict_changed']);
+// 화면에서 보내는 이벤트: 허용 유형·작은 payload만, event_id로 중복 제거. 단계나 결과를 바꾸지 않는다.
+const CLIENT_EVENTS = {
+  fidelity_select: ['value'], self_edit: ['length', 'changed'], evidence_none_check: ['field', 'checked'],
+  verdict_select: ['value'], verdict_change: ['from', 'to'], belief_set: ['field', 'value'],
+  visibility: ['state'], resume: [],
+};
 export function doEvent(s, d) {
-  if (!EVENT_TYPES.has(d.type) || s.events.length > 500) return;
-  s.events.push({ type: d.type, stage: s.stage, value: typeof d.value === 'string' ? d.value.slice(0, 40) : null, at: now() });
+  const keys = CLIENT_EVENTS[d.type];
+  if (!keys || s.events.length > 2000) return;
+  const eventId = typeof d.event_id === 'string' && /^[\w-]{8,64}$/.test(d.event_id) ? d.event_id : null;
+  if (eventId && s.events.some((e) => e.id === eventId)) return;
+  const payload = {};
+  for (const k of keys) {
+    const v = d.payload?.[k];
+    if (typeof v === 'number' || typeof v === 'boolean') payload[k] = v;
+    else if (typeof v === 'string') payload[k] = v.slice(0, 20);
+  }
+  addEvent(s, d.type, payload, { eventId, clientTs: typeof d.client_ts === 'string' ? d.client_ts.slice(0, 40) : null, source: 'client' });
 }
 
 // ---- 참가자 화면에 줄 정보 ----

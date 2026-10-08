@@ -27,6 +27,9 @@
       <label>AI 모드
         <select id="f-mode"><option value="all">전체</option><option value="live">실제 호출만</option><option value="mock">모의만</option></select>
       </label>
+      <label>단계
+        <select id="f-phase"><option value="all">전체</option><option value="main">본실험</option><option value="pilot">파일럿</option></select>
+      </label>
       <label>캐릭터
         <select id="f-character"><option value="all">전체</option></select>
       </label>
@@ -37,12 +40,36 @@
 
     <nav class="tabs no-print" id="tabs" hidden>
       <button type="button" data-tab="analysis" class="on">통계</button>
+      <button type="button" data-tab="rq1">RQ1 코딩</button>
       <button type="button" data-tab="rq3">RQ3 코딩</button>
       <button type="button" data-tab="sessions">세션 기록</button>
       <button type="button" data-tab="exports">내보내기</button>
     </nav>
 
     <section id="analysis" data-pane="analysis"></section>
+
+    <section id="rq1" data-pane="rq1" hidden>
+      <div id="rq1-results"></div>
+      <h2>코딩하기</h2>
+      <p class="muted">완료한 참가자의 글이 무작위 ID로 섞여 나옵니다. 참가자와 시점(S5/S9)은 숨겨져 있습니다. 점수를 고르면 바로 저장됩니다. 기준 D로 제외한 세션은 빠집니다.</p>
+      <div class="toolbar">
+        <label>시트
+          <select id="rq1-sheet">
+            <option value="reexam">A. 재검토 수준 (S5·S9 해석)</option>
+            <option value="selfapp">B. 자기적용 수준 (S5·S9 해석, ok만)</option>
+            <option value="s8">B. 자기적용 수준 (S8 응답, ok만)</option>
+            <option value="advice">C. 조언 질</option>
+          </select>
+        </label>
+        <label>코더
+          <select id="rq1-coder"><option value="coder1">코더 1</option><option value="coder2">코더 2</option><option value="final">합의 (두 코더가 다르게 본 것)</option></select>
+        </label>
+        <label class="inline"><input type="checkbox" id="rq1-todo"> 아직 안 한 것만</label>
+        <span class="muted" id="rq1-progress"></span>
+      </div>
+      <details class="criteria" id="rq1-criteria" open></details>
+      <div id="rq1-items"></div>
+    </section>
 
     <section id="rq3" data-pane="rq3" hidden>
       <div id="rq3-results"></div>
@@ -69,11 +96,13 @@
         <p class="lead">위 필터(AI 모드·캐릭터)가 그대로 적용됩니다.</p>
         <div class="actions left">
           <button type="button" data-dl="/api/admin/export.csv">세션 CSV (엑셀·SPSS·R)</button>
+          <button type="button" class="secondary" data-dl="/api/admin/coding/export.csv">RQ1 코딩 결과 CSV</button>
           <button type="button" class="secondary" data-dl="/api/admin/rq3/export.csv">RQ3 코딩 결과 CSV (출처 공개)</button>
+          <button type="button" class="secondary" data-dl="/api/admin/llm_log.csv">AI 호출 기록 (llm_log)</button>
           <button type="button" class="secondary" data-dl="/api/admin/export.json">전체 기록 JSON</button>
           <button type="button" class="secondary" id="report">통계 보고서 (HTML)</button>
         </div>
-        <p class="note">CSV는 한 사람당 한 행입니다. 설문 문항 중 보여 주지 않은 문항은 NA로 표시됩니다. 보고서는 브라우저에서 열어 PDF로 인쇄할 수 있습니다.</p>
+        <p class="note">참가자별 이벤트 순서(timeline)는 세션 기록 탭의 각 세션에서 내려받습니다. CSV는 한 사람당 한 행입니다. 설문 문항 중 보여 주지 않은 문항은 NA로 표시됩니다. 보고서는 브라우저에서 열어 PDF로 인쇄할 수 있습니다.</p>
       </div>
       <div class="panel">
         <h3>현재 설정</h3>

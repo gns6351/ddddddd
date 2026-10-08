@@ -21,9 +21,10 @@ function counts(values, labels) {
   return Object.entries(out).map(([id, count]) => ({ id, label: labels[id], count }));
 }
 
-export function filterSessions(sessions, { mode = 'all', character = 'all' } = {}) {
+export function filterSessions(sessions, { mode = 'all', character = 'all', phase = 'all' } = {}) {
   return sessions.filter((s) => (mode === 'all' || s.llmMode === mode)
-    && (character === 'all' || s.pick?.characterId === character));
+    && (character === 'all' || s.pick?.characterId === character)
+    && (phase === 'all' || (s.phase || 'pilot') === phase));
 }
 
 function beliefPair(label, group) {
@@ -42,7 +43,8 @@ function beliefPair(label, group) {
 
 export function computeAnalysis(all, content, filters = {}) {
   const sessions = filterSessions(all, filters);
-  const done = sessions.filter((s) => s.endType === 'completed');
+  // 분석 가능 = 완료 & 기준 D 제외 아님
+  const done = sessions.filter((s) => s.endType === 'completed' && !s.excluded?.excluded);
   const ok = done.filter((s) => s.advice.outcome === 'ok');
   const nonOk = done.filter((s) => s.advice.outcome && s.advice.outcome !== 'ok');
   const names = Object.fromEntries(content.scenarios.map((x) => [x.id, `${x.name} · ${x.title}`]));
@@ -95,9 +97,9 @@ export function computeAnalysis(all, content, filters = {}) {
 
   return {
     generatedAt: new Date().toISOString(),
-    filters: { mode: filters.mode || 'all', character: filters.character || 'all' },
+    filters: { mode: filters.mode || 'all', character: filters.character || 'all', phase: filters.phase || 'all' },
     n: {
-      sessions: sessions.length, completed: done.length, excluded: all.length - sessions.length, mock: sessions.filter((s) => s.llmMode === 'mock').length,
+      sessions: sessions.length, completed: done.length, excludedD: sessions.filter((s) => s.endType === 'completed' && s.excluded?.excluded).length, excluded: all.length - sessions.length, mock: sessions.filter((s) => s.llmMode === 'mock').length,
       ends: counts(sessions.map((s) => s.endType), END_LABELS),
       inProgress: sessions.filter((s) => !s.endType).length,
     },

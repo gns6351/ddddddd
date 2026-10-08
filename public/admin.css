@@ -93,6 +93,22 @@ button.danger { background: var(--error); color: #fff; }
 .saved { font-size: 12px; color: var(--muted); margin-left: 8px; }
 .others { font-size: 13px; color: var(--muted); margin-top: 6px; }
 
+/* RQ1 코딩 */
+.criteria { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 8px 0; font-size: 14px; }
+.criteria summary { font-weight: 600; color: var(--text); }
+.criteria ol { margin: 6px 0; padding-left: 0; list-style: none; }
+.criteria li { margin: 4px 0; }
+.criteria li b { display: inline-block; min-width: 2ch; }
+.code-card dl { margin: 6px 0; }
+.scorebar { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.scorebar button { min-width: 48px; background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+.scorebar button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.form-grid { display: grid; gap: 8px; }
+.form-grid textarea { min-height: 56px; }
+.inline-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+.inline-row input[type=text] { width: auto; flex: 1; min-width: 160px; }
+.qhint { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
+
 @media print {
   .no-print, #login, #sessions, #exports { display: none !important; }
 }

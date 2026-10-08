@@ -1,6 +1,10 @@
 // 연구자용 내보내기: 한 사람당 한 행 CSV
 import { LIKERT, finalAttempt } from './flow.js';
 import { convert } from './rulebased.js';
+import { stepSeconds } from './research.js';
+
+const cp = (v) => (typeof v === 'string' ? [...v.trim()].length : '');
+const TEXT_FIELDS = ['situation', 'emotion', 'automatic_thought', 'view_pre', 'edited_self', 'evidence_for', 'evidence_against', 'common', 'difference', 'reason', 'modified_text', 'view_post'];
 
 const minutes = (a, b) => (a && b ? ((new Date(b) - new Date(a)) / 60000).toFixed(1) : '');
 const val = (v) => (v == null ? '' : v);
@@ -15,6 +19,9 @@ export function flattenSession(s, rules) {
     created_at: s.createdAt,
     finished_at: val(s.finishedAt),
     stage: s.stage,
+    phase: s.phase || 'pilot',
+    excluded_d: s.excluded?.excluded ? true : '',
+    exclude_reason: s.excluded?.reason || '',
     end_type: val(s.endType),
     withdrawn_at_stage: val(s.withdrawnAt),
     llm_mode: s.llmMode,
@@ -27,6 +34,7 @@ export function flattenSession(s, rules) {
     character_id: val(s.pick.characterId),
     relevance: val(s.pick.relevance),
     dialogue_choices: s.dialogue.map((d) => d.choiceId).join(';'),
+    fact_ids: [...new Set(s.dialogue.flatMap((d) => d.factIds || []))].join(';'),
     advice_attempts: s.advice.attempts.length,
     advice_1: val(first?.text),
     outcome_1: val(first?.outcome),
@@ -66,7 +74,13 @@ export function flattenSession(s, rules) {
     belief_change: s.reflectPre && s.reflectPost ? s.reflectPost.belief_post - s.reflectPre.belief_pre : '',
   };
   for (const q of LIKERT) row[q] = s.survey ? (s.survey.shown_items.includes(q) ? s.survey[q] : 'NA') : '';
+  const secs = stepSeconds(s);
+  for (const st of ['S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10']) row[`sec_${st}`] = secs[st] ?? '';
+  const src = { ...s.reflectPre, ...s.returned, ...s.evidence, ...s.judge, ...s.reflectPost };
+  row.len_advice_final = cp(fa?.text);
+  for (const f of TEXT_FIELDS) row[`len_${f}`] = cp(src[f]);
   Object.assign(row, {
+    interview_themes: (s.interview?.themes || []).join(';'),
     safety_flags: s.safetyFlags.length,
     safety_rules: [...new Set(s.safetyFlags.flatMap((f) => f.rules))].join(';'),
     total_min: minutes(s.createdAt, s.finishedAt),

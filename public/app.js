@@ -53,10 +53,13 @@ async function api(path, body) {
   return data;
 }
 
-function logEvent(type, value) {
+// 화면 이벤트: 유형과 최소 정보(선택값·글자 수·체크 여부)만 보낸다. 원문은 보내지 않는다.
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+function logEvent(type, payload = {}) {
   if (!view || view.stage === 'S11') return;
   fetch(`/api/sessions/${view.id}/events`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, value }), keepalive: true,
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, payload, event_id: newId(), client_ts: new Date().toISOString() }), keepalive: true,
   }).catch(() => {});
 }
 
@@ -108,6 +111,7 @@ function slider(id, label, min = 0, max = 100) {
   const range = h('input', { type: 'range', id, min, max, step: 1, value: Math.round((min + max) / 2), class: 'untouched' });
   const mark = () => { touched = true; range.classList.remove('untouched'); out.textContent = range.value; };
   for (const ev of ['input', 'pointerdown', 'keydown']) range.addEventListener(ev, mark);
+  range.addEventListener('change', () => logEvent('belief_set', { field: id, value: Number(range.value) }));
   const el = wrapField(id, label, h('div', { class: 'scale' }, range, out), [h('div', { class: 'ends' }, h('span', {}, min), h('span', {}, max))]);
   return { el, get: () => (touched ? Number(range.value) : null) };
 }
@@ -131,7 +135,7 @@ function choice(id, label, opts, { solid = false, ends = null, onChange } = {}) 
 function textOrNone(id, noneId, label, noneLabel, max) {
   const t = textField(id, label, { max });
   const box = h('input', { type: 'checkbox', id: noneId });
-  box.addEventListener('change', () => { t.input.disabled = box.checked; });
+  box.addEventListener('change', () => { t.input.disabled = box.checked; logEvent('evidence_none_check', { field: noneId, checked: box.checked }); });
   t.el.insertBefore(h('label', { class: 'check' }, box, noneLabel), t.el.querySelector('.field-error'));
   return { el: t.el, get: () => (box.checked ? { [id]: '', [noneId]: true } : { [id]: t.get(), [noneId]: false }) };
 }
@@ -292,8 +296,9 @@ function renderS5() {
 function renderS6() {
   const s = T.S6;
   const fid = choice('fidelity', s.fidelity_label, Object.entries(s.fidelity_options).map(([value, label]) => ({ value, label })),
-    { onChange: (v) => logEvent('fidelity_changed', v) });
+    { onChange: (v) => logEvent('fidelity_select', { value: v }) });
   const edited = textField('edited_self', s.edit_label, { max: 1000 });
+  edited.input.addEventListener('change', () => logEvent('self_edit', { length: [...edited.get().trim()].length, changed: !!edited.get().trim() }));
   const bar = submitBar(null, () => step('returned', { fidelity: fid.get(), edited_self: edited.get() }));
   app.replaceChildren(
     h('h1', {}, s.title),
@@ -322,8 +327,13 @@ function renderS8() {
   const diff = textOrNone('difference', 'difference_none', fill(s.difference_label), s.none_label, 1000);
   const modified = textField('modified_text', s.modified_label, { max: 1000 });
   modified.el.hidden = true;
+  let lastVerdict = null;
   const verdict = choice('verdict', s.verdict_label, Object.entries(s.verdict_options).map(([value, label]) => ({ value, label })),
-    { onChange: (v) => { modified.el.hidden = v !== 'modify'; logEvent('verdict_changed', v); } });
+    { onChange: (v) => {
+      modified.el.hidden = v !== 'modify';
+      if (lastVerdict) logEvent('verdict_change', { from: lastVerdict, to: v }); else logEvent('verdict_select', { value: v });
+      lastVerdict = v;
+    } });
   const reason = textField('reason', s.reason_label);
   const bar = submitBar(null, () => {
     const v = verdict.get();
@@ -375,7 +385,7 @@ function render() {
   fields.clear();
   renderTop();
   const stage = view ? view.stage : 'S1';
-  if (stage !== lastStage) { lastStage = stage; if (view) logEvent('view_stage'); window.scrollTo(0, 0); }
+  if (stage !== lastStage) { lastStage = stage; window.scrollTo(0, 0); }
   SCREENS[stage]();
 }
 
@@ -394,7 +404,7 @@ async function boot() {
   if (saved) {
     try { view = await api(`/api/sessions/${saved}`); logEvent('resume'); } catch { storage.clear(); view = null; }
   }
-  document.addEventListener('visibilitychange', () => logEvent('visibility', document.visibilityState));
+  document.addEventListener('visibilitychange', () => logEvent('visibility', { state: document.visibilityState }));
   render();
 }
 

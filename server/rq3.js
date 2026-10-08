@@ -106,7 +106,7 @@ export function createRq3(dataDir) {
   };
 }
 
-export const eligible = (s) => s.endType === 'completed' && s.advice.outcome === 'ok' && finalAttempt(s)?.result;
+export const eligible = (s) => s.endType === 'completed' && !s.excluded?.excluded && s.advice.outcome === 'ok' && finalAttempt(s)?.result;
 
 function normalize(input) {
   const types = Array.isArray(input.types) ? [...new Set(input.types)] : [];

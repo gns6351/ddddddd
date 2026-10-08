@@ -1,5 +1,7 @@
 # 진행 기록
 
+> Phase 1~6은 v3.4 전체 구현(SQLite·CLI) 기록이다. 그 코드는 간편판 전환 후 삭제했고 커밋 `0caf215`에서 볼 수 있다.
+
 ## Phase 1 요구사항 추출 — 완료
 - `docs/implementation-contract.md`, `BLOCKERS.md`(B01~B30) 작성. 실험 콘텐츠·승인 미제공 항목은 게이트로 차단, 구현은 계속.
 
@@ -52,3 +54,11 @@
 - 미검증: 실제 Gemini API 호출(이 환경에 키 없음), cloudflared 터널(이 환경에 미설치).
 - RQ3 추가: 규칙 기반 비교 변환(`server/rulebased.js`), 출처를 가린 웹 코딩(코더1·2·합의, `server/rq3.js`, 대시보드 'RQ3 코딩' 탭), 방식별 오류율·유형·심각도·코더 일치도(κ·PABAK·AC1)·입력 차수 기준 ok 성공률·S6×코더 판정 집계, 출처 공개 CSV. 테스트: `npm test` 16/16, e2e 2/2(RQ3 코딩 포함).
 - 명세 대조 검토 후 수정: S2·S4~S10 문구를 v3.4 명세 문구로 복원(간편판에서 바뀐 S5 안내·라벨, S6 원문/자기지향 문장, S7 근거 부족, S8 수용·수정·보류·거부, S10 q9 "S6에서", 5단계 척도 라벨), S8에 S7 근거 표시·수정 문장 빈칸 시작·target_text 저장, S10 미표시 문항 422, S3 fact_ids 저장. 변환: urgent 조언은 외부 전송 없이 safety_hold, raw unsafe/blaming 래치 → safety_hold(llm_partial), 비조언 응답 필드 조건 검사, try당 10초, 프롬프트 temperature 전달, safety_source 기록. 대시보드: 설문 중앙값[IQR]·역문항 표시, 믿음 검정은 참고로 표시, 모의 세션 섞임 경고. 테스트 `npm test` 19/19, e2e 2/2.
+- 명세 대조 누락분 추가(연구자 요청 1~6) 및 예전 코드 삭제(core/ routes/ tools/ test/ db/ schemas/ config/ BLOCKERS.md 등, 커밋 0caf215에 보존):
+  1. RQ1 블라인드 웹 코딩(`server/coding.js`): A 재검토(S5·S9), B 자기적용(S5·S9, S8; 시점별 원칙 기준), C 조언 질, 코더1·2·합의, 이차 가중 κ, 결과(`server/research.js`): S8·S9 수준 분포(주), S5→S9 방향(보조), 조언 질×S8, 과정 지표×S9 수준, 참가자별 점수.
+  2. RQ2 보조: 잘 담겼다+비수용 사례, q9×q2·q10×q11 3단 교차와 사례, 인터뷰 주제 집계.
+  3. 기준 D 제외(사유, 분석·코딩 대상 제외, 보고 표), 파일럿/본실험 구분(STUDY_PHASE, 세션별 변경, 필터).
+  4. 인터뷰(§13.5): 경로별 질문·규칙·메모 틀을 세션 상세에서 기록.
+  5. 사전 점검(`npm run check:transform`): 3회 반복, (a) raw try·(b) 기대 outcome 90% 게이트·(c) 3/3 일치, 안전 false negative·ok 형식 게이트, 버전 비교.
+  6. 이벤트(명세 종류, event_id 중복 제거, payload 최소화, step_conflict·duplicate_rejected), 타임라인 txt, llm_log.csv, CSV에 단계별 시간·글자 수·fact_ids·단계·제외, 변환 중 철회 시 호출 기록 보존.
+  테스트: `npm test` 25/25, e2e 2/2.

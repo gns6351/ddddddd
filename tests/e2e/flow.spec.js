@@ -92,10 +92,24 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
   await page.locator('#list tr.click').first().click();
   await expect(page.locator('#detail')).toContainText('[TEST] 나는 안 돼');
   await expect(page.locator('#detail')).toContainText('80 → 40');
+  await expect(page.locator('#detail')).toContainText('분석 관리');
+  await page.locator('#detail summary', { hasText: '인터뷰' }).click();
+  await expect(page.locator('#detail')).toContainText('Q3. 돌려받은 문장에서');
+  await page.locator('#detail input[placeholder^="주제"]').fill('주도권, 부담');
+  await page.getByRole('button', { name: '인터뷰 저장' }).click();
+  await expect(page.locator('#detail .saved', { hasText: '저장됨' }).last()).toBeVisible();
   await shot(page, '07-admin-session');
+  // RQ1 코딩: 재검토 시트 = S5·S9 해석 2개
+  await page.getByRole('button', { name: 'RQ1 코딩' }).click();
+  await expect(page.locator('#rq1-items .code-card')).toHaveCount(2);
+  await expect(page.locator('#rq1-criteria')).toContainText('지지·반박 정보');
+  for (const c of await page.locator('#rq1-items .code-card').all()) await c.getByRole('button', { name: '2점' }).click();
+  await expect(page.locator('#rq1-progress')).toHaveText('2/2 코딩함');
+  await expect(page.locator('#rq1-results')).toContainText('S9 재검토 수준');
+  await shot(page, '09-rq1');
   // RQ3 코딩: 문장 2개(AI·규칙), 출처 숨김
   await page.getByRole('button', { name: 'RQ3 코딩' }).click();
-  const cards = page.locator('.code-card');
+  const cards = page.locator('#rq3-items .code-card');
   await expect(cards).toHaveCount(2);
   await cards.nth(0).getByText('정상 (오류 없음)').click();
   await expect(cards.nth(0).locator('.saved')).toHaveText('저장됨');

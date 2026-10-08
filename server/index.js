@@ -1,6 +1,7 @@
 // API 서버. 참가자용(/api/...)과 연구자용(/api/admin/...)
 import express from 'express';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import { ROOT, loadSettings, loadContent, loadPrompt } from './config.js';
 import { createStore } from './store.js';
@@ -8,9 +9,11 @@ import { createLlm } from './llm.js';
 import { createSafety } from './safety.js';
 import { runTransform } from './transform.js';
 import * as flow from './flow.js';
-import { computeAnalysis } from './analysis.js';
+import { computeAnalysis, filterSessions } from './analysis.js';
 import { flattenSession, toCsv } from './export.js';
 import { createRq3 } from './rq3.js';
+import { createCoding, SHEETS } from './coding.js';
+import { computeResearch } from './research.js';
 import { loadRules, convert } from './rulebased.js';
 
 export function createApp(overrides = {}, deps = {}) {
@@ -19,6 +22,7 @@ export function createApp(overrides = {}, deps = {}) {
   const llm = deps.llm || createLlm(settings, { client: deps.geminiClient });
   const transforming = new Set();
   const rq3 = createRq3(settings.dataDir);
+  const coding = createCoding(settings.dataDir);
   const content = () => loadContent(settings.contentDir);
   const prompt = () => loadPrompt(settings.contentDir, settings.transformPrompt);
 
@@ -99,9 +103,15 @@ export function createApp(overrides = {}, deps = {}) {
       const s = await store.update(req.params.id, (s) => {
         handler(s, d, c);
         safety = flow.scanUrgent(s, createSafety(c.safety), stage, d);
-      });
+      }).catch((err) => conflict(req.params.id, err, stage));
       res.json({ ...flow.publicView(s, c), safety });
     }));
+  }
+
+  // 지난·미래 단계 제출(409)은 이벤트로 남기고 그대로 알린다
+  async function conflict(id, err, stage, type = 'step_conflict') {
+    if (err?.status === 409) await store.update(id, (s) => { flow.addEvent(s, type, { attempted: stage }); }).catch(() => {});
+    throw err;
   }
 
   app.post('/api/sessions/:id/advice', wrap(async (req, res) => {
@@ -109,9 +119,9 @@ export function createApp(overrides = {}, deps = {}) {
     const id = req.params.id;
     const s0 = await store.get(id);
     if (!s0) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
-    flow.requireStage(s0, 'S4');
+    try { flow.requireStage(s0, 'S4'); } catch (err) { await conflict(id, err, 'S4'); }
     const advice = flow.validateAdvice(req.body || {});
-    if (transforming.has(id)) throw new flow.FlowError('조언을 정리하는 중이에요', 409);
+    if (transforming.has(id)) await conflict(id, new flow.FlowError('조언을 정리하는 중이에요', 409), 'S4', 'duplicate_rejected');
     transforming.add(id);
     try {
       const safety = createSafety(c.safety);
@@ -120,6 +130,12 @@ export function createApp(overrides = {}, deps = {}) {
       const s = await store.update(id, (s) => {
         flow.applyTransform(s, advice, out);
         flagged = flow.scanUrgent(s, safety, 'S4', { advice });
+      }).catch(async (err) => {
+        // 변환 중에 그만두기 등으로 단계가 바뀌었으면 결과는 버리되 AI 호출 기록은 남긴다
+        if (err?.status === 409) {
+          await store.update(id, (s) => { (s.orphanAttempts ||= []).push({ text: advice, at: new Date().toISOString(), ...out, outcome: 'cancelled', originalOutcome: out.outcome }); }).catch(() => {});
+        }
+        throw err;
       });
       res.json({ ...flow.publicView(s, c), safety: flagged });
     } finally {
@@ -149,7 +165,10 @@ export function createApp(overrides = {}, deps = {}) {
     }
   }
   const admin = (fn) => wrap(async (req, res) => { requireAdmin(req); return fn(req, res); });
-  const filtersOf = (q) => ({ mode: ['live', 'mock'].includes(q.mode) ? q.mode : 'all', character: String(q.character || 'all') });
+  const filtersOf = (q) => ({
+    mode: ['live', 'mock'].includes(q.mode) ? q.mode : 'all', character: String(q.character || 'all'),
+    phase: ['pilot', 'main'].includes(q.phase) ? q.phase : 'all',
+  });
 
   app.get('/api/admin/meta', admin(async (req, res) => {
     const c = content();
@@ -172,7 +191,7 @@ export function createApp(overrides = {}, deps = {}) {
       id: s.id, participantId: s.participantId, createdAt: s.createdAt, updatedAt: s.updatedAt, stage: s.stage, endType: s.endType,
       character: c.scenario(s.pick.characterId)?.name || '', outcome: s.advice.outcome, verdict: s.judge?.verdict || null,
       beliefPre: s.reflectPre?.belief_pre ?? null, beliefPost: s.reflectPost?.belief_post ?? null,
-      llmMode: s.llmMode, safety: s.safetyFlags.length,
+      llmMode: s.llmMode, safety: s.safetyFlags.length, phase: s.phase || 'pilot', excluded: !!s.excluded?.excluded, interview: !!s.interview,
     })));
   }));
 
@@ -220,10 +239,108 @@ export function createApp(overrides = {}, deps = {}) {
   }));
 
   const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  const filterRows = (list, q) => {
-    const f = filtersOf(q);
-    return list.filter((s) => (f.mode === 'all' || s.llmMode === f.mode) && (f.character === 'all' || s.pick.characterId === f.character));
-  };
+  const filterRows = (list, q) => filterSessions(list, filtersOf(q));
+
+
+  // ---- RQ1 코딩 (A 재검토 · B 자기적용 · C 조언 질) ----
+  app.get('/api/admin/coding/:sheet/items', admin(async (req, res) => {
+    const coder = ['coder1', 'coder2', 'final'].includes(req.query.coder) ? req.query.coder : 'coder1';
+    const criteria = JSON.parse(await fs.readFile(path.join(settings.contentDir, 'coding', 'criteria.json'), 'utf8'));
+    const key = { reexam: 'A', selfapp: 'B', s8: 'B', advice: 'C' }[req.params.sheet];
+    res.json({ ...await coding.list(req.params.sheet, filterRows(await store.list(), req.query), content(), coder), criteria: criteria[key] });
+  }));
+
+  app.post('/api/admin/coding/:sheet/code', admin(async (req, res) => {
+    const b = req.body || {};
+    res.json({ code: await coding.save(req.params.sheet, String(b.coder), String(b.blindId), b.score === null ? null : Number.isInteger(b.score) ? b.score : NaN) });
+  }));
+
+  async function codingResults(list) {
+    const out = {};
+    for (const sheet of Object.keys(SHEETS)) {
+      await coding.list(sheet, list, content(), 'coder1'); // 새 대상 반영
+      out[sheet] = await coding.results(sheet, list);
+    }
+    return out;
+  }
+
+  app.get('/api/admin/research', admin(async (req, res) => {
+    const list = filterRows(await store.list(), req.query);
+    res.json(computeResearch(list, await codingResults(list)));
+  }));
+
+  app.get('/api/admin/coding/export.csv', admin(async (req, res) => {
+    const list = filterRows(await store.list(), req.query);
+    await codingResults(list);
+    const rows = [];
+    for (const sheet of Object.keys(SHEETS)) rows.push(...await coding.rows(sheet, list));
+    res.attachment(`rq1-coding-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
+  }));
+
+  // ---- 세션 관리: 분석 제외(기준 D)·파일럿 표시·인터뷰 기록 ----
+  app.post('/api/admin/sessions/:id/meta', admin(async (req, res) => {
+    const b = req.body || {};
+    const s = await store.update(req.params.id, (s) => {
+      if (b.phase !== undefined) {
+        if (!['pilot', 'main'].includes(b.phase)) throw new flow.FlowError('단계는 pilot 또는 main', 422);
+        s.phase = b.phase;
+      }
+      if (b.excluded !== undefined) {
+        s.excluded = b.excluded ? { excluded: true, reason: String(b.reason || '').slice(0, 500), at: new Date().toISOString() } : null;
+      }
+    });
+    res.json({ phase: s.phase, excluded: s.excluded });
+  }));
+
+  app.post('/api/admin/sessions/:id/interview', admin(async (req, res) => {
+    const b = req.body || {};
+    const str = (v, n = 4000) => (typeof v === 'string' ? v.slice(0, n) : '');
+    const s = await store.update(req.params.id, (s) => {
+      if (s.endType !== 'completed') throw new flow.FlowError('인터뷰는 완료한 참가자만 기록해요', 409);
+      s.interview = {
+        path: s.advice.outcome === 'ok' ? 'ok' : 'exception',
+        start_time: str(b.start_time, 40), end_time: str(b.end_time, 40),
+        answers: Object.fromEntries(Object.entries(b.answers || {}).filter(([k]) => /^Q\w{1,4}$/.test(k)).map(([k, v]) => [k, str(v)])),
+        quotes: str(b.quotes), missing_or_refusal: str(b.missing_or_refusal, 1000), followups: str(b.followups, 2000),
+        recording_consent: b.recording_consent === true, safety_incident: b.safety_incident === true,
+        researcher_id: str(b.researcher_id, 40),
+        themes: [...new Set(String(b.themes || '').split(/[,;\n]/).map((t) => t.trim()).filter(Boolean))].slice(0, 30),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    res.json(s.interview);
+  }));
+
+  app.get('/api/admin/criteria', admin(async (req, res) => {
+    res.json(JSON.parse(await fs.readFile(path.join(settings.contentDir, 'coding', 'criteria.json'), 'utf8')));
+  }));
+
+  app.get('/api/admin/interview-protocol', admin(async (req, res) => {
+    res.json(JSON.parse(await fs.readFile(path.join(settings.contentDir, 'interview', 'protocol.json'), 'utf8')));
+  }));
+
+  // 참가자별 이벤트 순서 (명세: timeline_<코드>.txt)
+  app.get('/api/admin/sessions/:id/timeline.txt', admin(async (req, res) => {
+    const s = await store.get(req.params.id);
+    if (!s) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
+    const t0 = new Date(s.createdAt);
+    const lines = s.events.map((e) => `${String(Math.round((new Date(e.at) - t0) / 1000)).padStart(5)}s  ${e.at}  ${e.stage.padEnd(3)}  ${e.type}${Object.keys(e.payload || {}).length ? `  ${JSON.stringify(e.payload)}` : ''}`);
+    res.attachment(`timeline_${s.participantId}.txt`).type('text/plain; charset=utf-8').send(`${s.participantId} (${s.id})\n${lines.join('\n')}\n`);
+  }));
+
+  // 모든 AI 호출과 실패 사유 (명세: llm_log.csv)
+  app.get('/api/admin/llm_log.csv', admin(async (req, res) => {
+    const rows = [];
+    for (const s of filterRows(await store.list(), req.query)) {
+      const all = [...s.advice.attempts.map((a) => ({ ...a, cancelled: false })), ...(s.orphanAttempts || []).map((a) => ({ ...a, cancelled: true }))];
+      for (const a of all) {
+        const base = { session_id: s.id, participant_id: s.participantId, input_attempt: a.n ?? '', outcome: a.outcome, original_outcome: a.originalOutcome || '', safety_source: a.safetySource || '', source: a.source, rule_hits: (a.ruleHits || []).join(';'), latch_unsafe: !!a.latch?.unsafe, latch_blaming: !!a.latch?.blaming };
+        if (!a.calls?.length) rows.push({ ...base, try: '', at: a.at, llm_mode: '', model: '', response_model: '', latency_ms: '', valid: '', error: '', finish_reason: '', prompt: '' });
+        for (const c of a.calls || []) rows.push({ ...base, try: c.attempt, at: c.at, llm_mode: c.llmMode, model: c.model, response_model: c.responseModel || '', latency_ms: c.latencyMs, valid: c.valid, error: c.error || '', finish_reason: c.finishReason || '', prompt: c.prompt });
+      }
+    }
+    res.attachment(`llm_log-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
+  }));
 
   app.use('/api', (req, res) => res.status(404).json({ error: '없는 API예요' }));
 

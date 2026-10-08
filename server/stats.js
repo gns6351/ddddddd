@@ -216,3 +216,25 @@ export function quantile(xs, p) {
   const hi = Math.ceil(h);
   return s[lo] + (h - lo) * (s[hi] - s[lo]);
 }
+
+// 이차 가중 κ (순서 척도). levels: 가능한 값 배열 (예: [0,1,2,3])
+export function weightedKappa(a, b, levels) {
+  const n = a.length;
+  const K = levels.length;
+  if (!n || K < 2) return NaN;
+  const idx = new Map(levels.map((v, i) => [v, i]));
+  const O = Array.from({ length: K }, () => Array(K).fill(0));
+  for (let i = 0; i < n; i += 1) O[idx.get(a[i])][idx.get(b[i])] += 1 / n;
+  const ra = O.map((r) => r.reduce((x, y) => x + y, 0));
+  const cb = levels.map((_, j) => O.reduce((x, r) => x + r[j], 0));
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < K; i += 1) {
+    for (let j = 0; j < K; j += 1) {
+      const w = ((i - j) ** 2) / ((K - 1) ** 2);
+      num += w * O[i][j];
+      den += w * ra[i] * cb[j];
+    }
+  }
+  return den === 0 ? NaN : 1 - num / den;
+}

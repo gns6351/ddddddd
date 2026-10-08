@@ -24,6 +24,8 @@ export function loadSettings(overrides = {}) {
     thinking: env.GEMINI_THINKING_LEVEL ?? 'low',
     timeoutMs: Number(env.LLM_TIMEOUT_MS || 10000), // 명세: try당 10초, 최대 2회
     transformPrompt: env.TRANSFORM_PROMPT || 'v2',
+    // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)
+    phase: oneOf(env.STUDY_PHASE, ['pilot', 'main'], 'pilot'),
     // 연구자 화면 비밀번호. 비워 두면 서버 PC(localhost)에서만 비밀번호 없이 열림
     adminToken: env.ADMIN_TOKEN || '',
     // 외부 링크로 참가자를 받을 때 입장 코드(?code=). 비우면 누구나 시작 가능
