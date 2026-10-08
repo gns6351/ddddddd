@@ -37,11 +37,26 @@
 
     <nav class="tabs no-print" id="tabs" hidden>
       <button type="button" data-tab="analysis" class="on">통계</button>
+      <button type="button" data-tab="rq3">RQ3 코딩</button>
       <button type="button" data-tab="sessions">세션 기록</button>
       <button type="button" data-tab="exports">내보내기</button>
     </nav>
 
     <section id="analysis" data-pane="analysis"></section>
+
+    <section id="rq3" data-pane="rq3" hidden>
+      <div id="rq3-results"></div>
+      <h2>코딩하기</h2>
+      <p class="muted">완료한 참가자 중 변환이 ok인 사람의 조언마다 AI 변환문과 규칙 변환문 두 문장이 섞여 나옵니다. 어느 쪽인지는 숨겨져 있고, 상황절은 [상황]으로 가렸습니다. 주절이 원래 조언의 뜻을 보존했는지 판정하세요. 고르면 바로 저장됩니다.</p>
+      <div class="toolbar">
+        <label>코더
+          <select id="rq3-coder"><option value="coder1">코더 1</option><option value="coder2">코더 2</option><option value="final">합의 (두 코더가 다르게 본 것)</option></select>
+        </label>
+        <label class="inline"><input type="checkbox" id="rq3-todo"> 아직 안 한 것만</label>
+        <span class="muted" id="rq3-progress"></span>
+      </div>
+      <div id="rq3-items"></div>
+    </section>
 
     <section id="sessions" data-pane="sessions" hidden>
       <div class="scroll"><table class="data" id="list"></table></div>
@@ -54,6 +69,7 @@
         <p class="lead">위 필터(AI 모드·캐릭터)가 그대로 적용됩니다.</p>
         <div class="actions left">
           <button type="button" data-dl="/api/admin/export.csv">세션 CSV (엑셀·SPSS·R)</button>
+          <button type="button" class="secondary" data-dl="/api/admin/rq3/export.csv">RQ3 코딩 결과 CSV (출처 공개)</button>
           <button type="button" class="secondary" data-dl="/api/admin/export.json">전체 기록 JSON</button>
           <button type="button" class="secondary" id="report">통계 보고서 (HTML)</button>
         </div>

@@ -1,10 +1,11 @@
 // 연구자용 내보내기: 한 사람당 한 행 CSV
 import { LIKERT, finalAttempt } from './flow.js';
+import { convert } from './rulebased.js';
 
 const minutes = (a, b) => (a && b ? ((new Date(b) - new Date(a)) / 60000).toFixed(1) : '');
 const val = (v) => (v == null ? '' : v);
 
-export function flattenSession(s) {
+export function flattenSession(s, rules) {
   const fa = finalAttempt(s);
   const first = s.advice.attempts[0];
   const lastCall = fa?.calls?.at(-1);
@@ -36,6 +37,7 @@ export function flattenSession(s) {
     advice_type: val(fa?.result?.type),
     core: (fa?.result?.core || []).join(' | '),
     self: val(fa?.result?.self),
+    rule_self: rules && s.advice.outcome === 'ok' ? convert(rules, fa.text).sentence : '',
     llm_calls: s.advice.attempts.reduce((a, x) => a + (x.calls?.length || 0), 0),
     llm_errors: s.advice.attempts.reduce((a, x) => a + (x.calls || []).filter((c) => !c.valid).length, 0),
     llm_latency_ms: val(lastCall?.latencyMs),

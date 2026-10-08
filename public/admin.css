@@ -64,7 +64,7 @@ table.data th { font-weight: 600; color: var(--muted); }
 table.data td.num, table.data th.num { text-align: right; }
 table.data tr.click { cursor: pointer; }
 table.data tr.click:hover, table.data tr.sel { background: var(--accent-soft); }
-.scroll > table { min-width: 640px; }
+#sessions .scroll > table { min-width: 640px; }
 .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
 .badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap; }
 .badge.warn { border-color: var(--warn-line); background: var(--warn-bg); }
@@ -79,6 +79,19 @@ details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-
 button.danger { background: var(--error); color: #fff; }
 
 .tip { position: fixed; z-index: 20; pointer-events: none; background: var(--text); color: var(--bg); font-size: 12px; padding: 6px 8px; border-radius: 6px; max-width: 280px; white-space: pre-line; }
+
+/* RQ3 코딩 카드 */
+.code-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 10px 0; }
+.code-card.done { border-color: var(--accent); }
+.code-card .id { font-size: 12px; color: var(--muted); }
+.code-card .src { margin: 6px 0; padding: 6px 10px; border-left: 4px solid var(--line); white-space: pre-wrap; }
+.code-card .out { margin: 6px 0; padding: 6px 10px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; font-weight: 600; white-space: pre-wrap; }
+.types { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 14px; }
+.types label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.types input { accent-color: var(--accent); }
+.types small { color: var(--muted); }
+.saved { font-size: 12px; color: var(--muted); margin-left: 8px; }
+.others { font-size: 13px; color: var(--muted); margin-top: 6px; }
 
 @media print {
   .no-print, #login, #sessions, #exports { display: none !important; }

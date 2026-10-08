@@ -237,6 +237,7 @@ async function showDetail(id) {
       ['유형', fa?.result?.type],
       ['핵심', fa?.result?.core?.join(' | ')],
       ['돌아온 말', fa?.result?.self],
+      ['규칙 변환(RQ3 비교용)', x.ruleSelf],
     ]),
     h('h3', {}, '내 경험 → 다시 보기'),
     kv([
@@ -307,7 +308,8 @@ async function download(path) {
 async function saveReport() {
   if (!last) return;
   const css = (await Promise.all(['styles.css', 'admin.css'].map((f) => fetch(f).then((r) => r.text())))).join('\n');
-  const body = $('analysis').cloneNode(true);
+  if (!$('rq3-results').childElementCount) await loadRq3Summary();
+  const body = h('div', {}, $('analysis').cloneNode(true), $('rq3-results').cloneNode(true));
   const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const info = [
     `생성: ${new Date(last.generatedAt).toLocaleString('ko-KR')}`,
@@ -320,16 +322,134 @@ async function saveReport() {
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- RQ3 코딩 ----------
+const ERROR_TYPES = [
+  ['의미 추가', '심각'], ['의미 왜곡', '심각'], ['의미 반전', '심각'], ['의미 누락', '중간'],
+  ['강도 변경', '중간'], ['과도한 일반화', '경미'], ['캐릭터 사실 포함', '경미'], ['형식·어조 위반', '경미'],
+];
+const pctNum = (r) => (Number.isFinite(r) ? `${(r * 100).toFixed(1)}%` : '—');
+const codeText = (c) => (!c ? '미코딩' : c.error ? `${c.types.join(', ')}${c.frame_diff ? ' (+틀 차이)' : ''}` : `정상${c.frame_diff ? ' (틀 차이 있음)' : ''}`);
+
+function renderRq3Summary(x) {
+  const [llm, rule] = x.methods;
+  const typeRows = ERROR_TYPES.map(([t, sev], i) => [
+    `${t}${llm.types[i].compared ? '' : ' (참고, 비교 제외)'}`, sev,
+    `${llm.types[i].count} (${pctNum(llm.types[i].rate)})`, `${rule.types[i].count} (${pctNum(rule.types[i].rate)})`,
+  ]);
+  const rel = x.reliability;
+  const att = x.attempts;
+  const uc = x.userVsCoder;
+  $('rq3-results').replaceChildren(
+    h('h2', {}, 'RQ3 결과'),
+    h('div', { class: 'tiles' },
+      tile(x.eligibleSessions, '대상 (완료 & 변환 ok)'),
+      tile(`${x.progress.coder1}/${x.items}`, '코더 1 진행'),
+      tile(`${x.progress.coder2}/${x.items}`, '코더 2 진행'),
+      tile(x.unresolved, '판정 미확정 문장 (미코딩·불일치)'),
+      tile(pctNum(att.okRate), `ok 성공률 (S4 입력 ${att.n}차 기준)`),
+    ),
+    h('div', { class: 'grid2' },
+      panel('방식별 주절 의미 오류', '판정 = 합의 → 두 코더 일치 → 한 명만 코딩했으면 그 판정. 미확정 문장은 분모에서 빠집니다.',
+        table(['', 'AI 변환', '규칙 변환'], [
+          ['판정된 문장', llm.coded, rule.coded],
+          ['오류 있음', `${llm.error.count} (${pctNum(llm.error.rate)})`, `${rule.error.count} (${pctNum(rule.error.rate)})`],
+          ...['심각', '중간', '경미'].map((lv, i) => [`가장 무거운 오류: ${lv}`, llm.severity[i].count, rule.severity[i].count]),
+          ['틀 때문에 생긴 차이 (오류 아님)', llm.frameDiff, rule.frameDiff],
+        ], [1, 2])),
+      panel('오류 유형별', '한 문장에 여러 유형이 있을 수 있어 합이 오류 수보다 클 수 있습니다.', table(['유형', '심각도', 'AI', '규칙'], typeRows, [2, 3])),
+    ),
+    h('div', { class: 'grid2' },
+      panel('코더 간 일치도', `두 코더가 모두 코딩한 ${rel.n}문장. 불일치 ${rel.disagreements}건 중 합의 ${rel.resolved}건.`,
+        table(['지표', '값'], [
+          ['오류 있음/없음 일치율', num(rel.binary.agreement, 3)], ["Cohen's κ", num(rel.binary.kappa, 3)],
+          ['PABAK', num(rel.binary.pabak, 3)], ["Gwet's AC1", num(rel.binary.ac1, 3)],
+        ], [1]),
+        table(['유형', '일치율', 'κ', '불일치'], rel.types.map((t) => [t.type, num(t.agreement, 3), num(t.kappa, 3), t.disagreements]), [1, 2, 3])),
+      panel('변환 결과 (S4 입력 차수 기준)', '다시 쓰기를 포함한 모든 조언 제출이 분모입니다.',
+        table(['결과', '차수', '비율'], att.outcomes.map((o) => [o.outcome, o.count, pctNum(att.n ? o.count / att.n : NaN)]), [1, 2]),
+        h('h3', {}, '참가자 판단(S6) × 코더 판정(AI 문장)'),
+        table(['S6 응답', '코더: 오류', '코더: 정상'], [
+          ['잘 담겼다', uc.good.err, uc.good.noerr],
+          ['일부 다르다 / 내 뜻과 다르다', uc.diff.err, uc.diff.noerr],
+        ], [1, 2]),
+        h('p', { class: 'note' }, `참가자가 "잘 담겼다"고 했지만 코더가 오류로 본 것 ${uc.good.err}건 · 참가자가 다르다고 했지만 코더는 틀 차이만 본 것 ${uc.frameOnly}건.`)),
+    ),
+  );
+}
+
+function codeCard(it, coder) {
+  const status = h('span', { class: 'saved' }, it.code ? '저장됨' : '');
+  const normal = h('input', { type: 'checkbox' });
+  const boxes = ERROR_TYPES.map(([t]) => h('input', { type: 'checkbox', value: t }));
+  const frame = h('input', { type: 'checkbox' });
+  if (it.code) {
+    normal.checked = !it.code.error;
+    boxes.forEach((b) => { b.checked = it.code.types.includes(b.value); });
+    frame.checked = it.code.frame_diff;
+  }
+  const card = h('div', { class: `code-card${it.code ? ' done' : ''}` },
+    h('div', { class: 'id' }, it.blindId, status),
+    h('div', { class: 'muted' }, '원래 조언'), h('div', { class: 'src' }, it.advice),
+    h('div', { class: 'muted' }, '변환된 주절'), h('div', { class: 'out' }, it.sentence),
+    it.coder1 ? h('div', { class: 'others' }, `코더 1: ${codeText(it.coder1)} · 코더 2: ${codeText(it.coder2)}`) : '',
+    h('div', { class: 'types' },
+      h('label', {}, normal, h('b', {}, '정상 (오류 없음)')),
+      ERROR_TYPES.map(([t, sev], i) => h('label', {}, boxes[i], t, h('small', {}, sev)))),
+    h('div', { class: 'types' }, h('label', {}, frame, '틀(“나도 비슷한 상황이라면 … 생각해볼 수 있다”) 때문에 생긴 차이만 있음')),
+  );
+  const save = async () => {
+    const types = boxes.filter((b) => b.checked).map((b) => b.value);
+    const body = !normal.checked && !types.length ? { coder, blindId: it.blindId, clear: true }
+      : { coder, blindId: it.blindId, normal: normal.checked, types, frame_diff: frame.checked };
+    status.textContent = '저장 중…';
+    try {
+      const r = await (await call('/api/admin/rq3/code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+      it.code = r.code;
+      card.classList.toggle('done', !!r.code);
+      status.textContent = r.code ? '저장됨' : '지움';
+      loadRq3Summary();
+    } catch (e) { status.textContent = e.message; }
+  };
+  normal.addEventListener('change', () => { if (normal.checked) boxes.forEach((b) => { b.checked = false; }); save(); });
+  boxes.forEach((b) => b.addEventListener('change', () => { if (b.checked) normal.checked = false; save(); }));
+  frame.addEventListener('change', () => { if (normal.checked || boxes.some((b) => b.checked)) save(); });
+  return card;
+}
+
+async function loadRq3Summary() {
+  try {
+    const x = await getJson(`/api/admin/rq3/summary?${query()}`);
+    renderRq3Summary(x);
+    const coder = $('rq3-coder').value;
+    if (coder !== 'final') $('rq3-progress').textContent = `${x.progress[coder]}/${x.items} 코딩함`;
+  } catch (e) { $('err').textContent = e.message; }
+}
+
+async function loadRq3() {
+  const coder = $('rq3-coder').value;
+  try {
+    const r = await getJson(`/api/admin/rq3/items?coder=${coder}&${query()}`);
+    const items = $('rq3-todo').checked ? r.items.filter((it) => !it.code) : r.items;
+    $('rq3-progress').textContent = coder === 'final' ? `불일치 ${r.items.length}건 중 합의 ${r.done}건` : `${r.done}/${r.total} 코딩함`;
+    $('rq3-items').replaceChildren(...(items.length ? items.map((it) => codeCard(it, coder))
+      : [h('p', { class: 'muted' }, coder === 'final' ? '두 코더가 다르게 본 문장이 없어요.' : r.total ? '모두 코딩했어요.' : '아직 대상이 없어요. 변환 ok로 끝까지 마친 참가자가 생기면 나타납니다.')]));
+    loadRq3Summary();
+  } catch (e) { $('err').textContent = e.message; }
+}
+
 // ---------- 이벤트 ----------
 $('load').addEventListener('click', () => { meta = null; load(); });
 $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') { meta = null; load(); } });
 $('refresh').addEventListener('click', () => load());
-for (const id of ['f-mode', 'f-character']) $(id).addEventListener('change', () => load());
+for (const id of ['f-mode', 'f-character']) $(id).addEventListener('change', () => { load(); if (!$('rq3').hidden) loadRq3(); });
 $('f-live').addEventListener('change', schedule);
 document.querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', () => download(b.dataset.dl)));
 $('report').addEventListener('click', saveReport);
 document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
+  if (b.dataset.tab === 'rq3') loadRq3();
 }));
+$('rq3-coder').addEventListener('change', loadRq3);
+$('rq3-todo').addEventListener('change', loadRq3);
 load();

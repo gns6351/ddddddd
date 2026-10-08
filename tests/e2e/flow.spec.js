@@ -93,6 +93,17 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
   await expect(page.locator('#detail')).toContainText('[TEST] 나는 안 돼');
   await expect(page.locator('#detail')).toContainText('80 → 40');
   await shot(page, '07-admin-session');
+  // RQ3 코딩: 문장 2개(AI·규칙), 출처 숨김
+  await page.getByRole('button', { name: 'RQ3 코딩' }).click();
+  const cards = page.locator('.code-card');
+  await expect(cards).toHaveCount(2);
+  await cards.nth(0).getByText('정상 (오류 없음)').click();
+  await expect(cards.nth(0).locator('.saved')).toHaveText('저장됨');
+  await cards.nth(1).getByText('의미 추가').click();
+  await expect(cards.nth(1).locator('.saved')).toHaveText('저장됨');
+  await expect(page.locator('#rq3-progress')).toHaveText('2/2 코딩함');
+  await expect(page.locator('#rq3-results')).toContainText('2/2');
+  await shot(page, '08-rq3');
   await page.getByRole('button', { name: '내보내기' }).click();
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /세션 CSV/ }).click()]);
   expect(dl.suggestedFilename()).toMatch(/^sessions-.*\.csv$/);

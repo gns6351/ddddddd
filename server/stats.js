@@ -171,3 +171,38 @@ export function describe(xs) {
   if (!v.length) return { n: 0 };
   return { n: v.length, mean: mean(v), sd: sd(v), median: median(v), min: Math.min(...v), max: Math.max(...v) };
 }
+
+// ---- 코더 간 일치도 (RQ3 코딩) ----
+export function agreement(a, b) {
+  if (!a.length) return NaN;
+  return a.filter((x, i) => x === b[i]).length / a.length;
+}
+
+// Cohen's κ (명목·이진)
+export function cohenKappa(a, b) {
+  const n = a.length;
+  if (!n) return NaN;
+  const cats = [...new Set([...a, ...b])];
+  const po = agreement(a, b);
+  let pe = 0;
+  for (const c of cats) pe += (a.filter((x) => x === c).length / n) * (b.filter((x) => x === c).length / n);
+  return pe === 1 ? NaN : (po - pe) / (1 - pe);
+}
+
+// PABAK (이진): 2·po − 1
+export const pabak = (a, b) => (a.length ? 2 * agreement(a, b) - 1 : NaN);
+
+// Gwet's AC1 (2 코더)
+export function gwetAC1(a, b, cats = [...new Set([...a, ...b])]) {
+  const n = a.length;
+  if (!n) return NaN;
+  const q = Math.max(cats.length, 2);
+  const po = agreement(a, b);
+  let pe = 0;
+  for (const c of cats) {
+    const pi = (a.filter((x) => x === c).length + b.filter((x) => x === c).length) / (2 * n);
+    pe += pi * (1 - pi);
+  }
+  pe /= q - 1;
+  return pe === 1 ? NaN : (po - pe) / (1 - pe);
+}

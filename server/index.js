@@ -10,12 +10,15 @@ import { runTransform } from './transform.js';
 import * as flow from './flow.js';
 import { computeAnalysis } from './analysis.js';
 import { flattenSession, toCsv } from './export.js';
+import { createRq3 } from './rq3.js';
+import { loadRules, convert } from './rulebased.js';
 
 export function createApp(overrides = {}, deps = {}) {
   const settings = loadSettings(overrides);
   const store = createStore(settings.dataDir);
   const llm = deps.llm || createLlm(settings, { client: deps.geminiClient });
   const transforming = new Set();
+  const rq3 = createRq3(settings.dataDir);
   const content = () => loadContent(settings.contentDir);
   const prompt = () => loadPrompt(settings.contentDir, settings.transformPrompt);
 
@@ -176,7 +179,8 @@ export function createApp(overrides = {}, deps = {}) {
   app.get('/api/admin/sessions/:id', admin(async (req, res) => {
     const s = await store.get(req.params.id);
     if (!s) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
-    res.json(s);
+    const fa = flow.finalAttempt(s);
+    res.json({ ...s, ruleSelf: s.advice.outcome === 'ok' ? convert(loadRules(settings.contentDir), fa.text).sentence : null });
   }));
 
   app.delete('/api/admin/sessions/:id', admin(async (req, res) => {
@@ -185,12 +189,34 @@ export function createApp(overrides = {}, deps = {}) {
   }));
 
   app.get('/api/admin/export.csv', admin(async (req, res) => {
-    const rows = filterRows(await store.list(), req.query).map(flattenSession);
+    const rules = loadRules(settings.contentDir);
+    const rows = filterRows(await store.list(), req.query).map((s) => flattenSession(s, rules));
     res.attachment(`sessions-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
   }));
 
   app.get('/api/admin/export.json', admin(async (req, res) => {
     res.attachment(`sessions-${stamp()}.json`).json(filterRows(await store.list(), req.query));
+  }));
+
+  // ---- RQ3 코딩 ----
+  app.get('/api/admin/rq3/items', admin(async (req, res) => {
+    const coder = ['coder1', 'coder2', 'final'].includes(req.query.coder) ? req.query.coder : 'coder1';
+    res.json(await rq3.list(filterRows(await store.list(), req.query), loadRules(settings.contentDir), coder));
+  }));
+
+  app.post('/api/admin/rq3/code', admin(async (req, res) => {
+    const b = req.body || {};
+    res.json({ code: await rq3.save(String(b.coder), String(b.blindId), b.clear ? null : b) });
+  }));
+
+  app.get('/api/admin/rq3/summary', admin(async (req, res) => {
+    const list = filterRows(await store.list(), req.query);
+    await rq3.list(list, loadRules(settings.contentDir), 'coder1'); // 새 대상 반영
+    res.json(await rq3.summary(list));
+  }));
+
+  app.get('/api/admin/rq3/export.csv', admin(async (req, res) => {
+    res.attachment(`rq3-coding-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(await rq3.rows(filterRows(await store.list(), req.query))));
   }));
 
   const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');

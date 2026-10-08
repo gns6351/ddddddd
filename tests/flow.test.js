@@ -1,7 +1,7 @@
 // 참가자 흐름 S1→S11, 분기, 오류 처리 (모의 AI + 가상 콘텐츠)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, toAdvice, S5 } from './helpers.js';
+import { boot, toAdvice, S5, parseCsv } from './helpers.js';
 
 const OK_ADVICE = '[TEST] 한 번 실패했다고 다 끝난 건 아니야. 작은 것부터 해 봐.';
 
@@ -37,13 +37,11 @@ test('ok 경로: S1→S6→S8→S11 완료, 대시보드·CSV에 반영', async 
     assert.equal(a.belief[0].points[0].post - a.belief[0].points[0].pre, -30);
     assert.equal(a.verdict.counts.find((c) => c.id === 'modify').count, 1);
     assert.equal(a.fidelity.edited, 1);
-    const csv = (await t.get('/api/admin/export.csv')).text;
-    const [head, row] = csv.replace('﻿', '').split('\r\n');
-    const cols = head.split(',');
-    const cells = row.split(',');
-    assert.equal(cells[cols.indexOf('belief_change')], '-30');
-    assert.equal(cells[cols.indexOf('outcome')], 'ok');
-    assert.equal(cells[cols.indexOf('q9')], '4');
+    const [row] = parseCsv((await t.get('/api/admin/export.csv')).text);
+    assert.equal(row.belief_change, '-30');
+    assert.equal(row.outcome, 'ok');
+    assert.equal(row.q9, '4');
+    assert.match(row.rule_self, /^나도 비슷한 상황이라면, .*라고 생각해볼 수 있다$/);
   } finally { await t.close(); }
 });
 

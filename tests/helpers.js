@@ -42,3 +42,22 @@ export async function toAdvice(t, pid = 'T01') {
 }
 
 export const S5 = { situation: '[TEST] 상황', emotion: '[TEST] 감정', automatic_thought: '[TEST] 생각', belief_pre: 80, view_pre: '[TEST] 해석' };
+
+// 따옴표를 처리하는 간단한 CSV 읽기 → [{열: 값}]
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let q = false;
+  const s = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (q) {
+      if (c === '"' && s[i + 1] === '"') { cell += '"'; i += 1; } else if (c === '"') q = false; else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell.replace(/\r$/, '')); rows.push(row); row = []; cell = ''; } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  const [head, ...body] = rows;
+  return body.map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+}
