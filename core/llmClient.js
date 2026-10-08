@@ -14,7 +14,7 @@ class LlmError extends Error {
   constructor(code, { unknown = false, text = null } = {}) { super(code); this.code = code; this.unknown = unknown; this.text = text; }
 }
 
-function geminiProvider({ apiKey, model }) {
+function geminiProvider({ apiKey, model, clientFactory = null }) {
   let client = null;
   return {
     id: 'gemini',
@@ -23,8 +23,8 @@ function geminiProvider({ apiKey, model }) {
       if (!apiKey) throw new LlmError('NO_API_KEY');
       if (!model || PLACEHOLDER.test(model)) throw new LlmError('MODEL_NOT_CONFIGURED');
       if (!client) {
-        const { GoogleGenAI } = require('@google/genai');
-        client = new GoogleGenAI({ apiKey });
+        if (clientFactory) client = clientFactory({ apiKey });
+        else { const { GoogleGenAI } = require('@google/genai'); client = new GoogleGenAI({ apiKey }); }
       }
       const config = { responseMimeType: 'application/json', responseJsonSchema: schema, abortSignal: signal };
       if (typeof temperature === 'number') config.temperature = temperature;

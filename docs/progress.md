@@ -15,5 +15,12 @@
 - 수정한 결함: S10 완료 직후 토큰 폐기로 종료 유형이 일반 안내로 표시되던 문제, `[hidden]` CSS 우선순위.
 - 테스트(실행함): Playwright 5/5 통과 — T01(UI), T03·S3 네트워크 payload 실측, T06/T20(UI 5문항), T15/T27(뒤로가기·새로고침), T19(UI), T24(HTML 비실행), T30(UI), T54(UI). Vitest 38/38 재통과.
 
+## Phase 4 LLM — 완료(실제 Gemini 호출은 미검증)
+- Mock 전 경로: ok / not_advice / unsafe / blaming / both / JSON·조건 오류 / raw 래치 / 타임아웃 / HTTP 오류 / 네트워크 불명(unknown, 재송신 0) / 공급자 차단(B14) / rule_fallback.
+- Gemini 클라이언트: `@google/genai` generateContent에 responseMimeType=application/json, responseJsonSchema(schema.json), temperature(프롬프트 머리말), thinkingConfig.thinkingLevel, abortSignal 전달. 모델 ID 미확정·API 키 없음이면 호출 자체 거부.
+- `tools/pretest.js` + `core/pretest.js`: trial/try/고유 항목 분모 분리, 자동 게이트 지표.
+- 테스트(실행함): Vitest 6 files / 57 tests 통과 — 추가로 T07(LLM) T09 T25 T29 T32(DB) T47, 개인 기록 비전송·프롬프트 치환 주입 방지, 판정기 단위, Gemini 요청 형식(가짜 클라이언트 주입).
+- **미검증**: 실제 Gemini API 호출(모델 ID B04 미확정, 이 환경에 GEMINI_API_KEY 없음). 실제 모델의 responseJsonSchema·thinkingLevel 지원 여부는 모델 확정 후 pretest로 확인 필요.
+
 ## 다음
-- Phase 4: Mock LLM 전 경로(T07/T09/T25/T29/T32 등), Gemini 클라이언트 구조화 출력·오류 분류 검증.
+- Phase 5: export.js(시트·키·llm_log·timeline), rulebased.js, analyze.js(신뢰도·RQ 통계·analysis_runs).

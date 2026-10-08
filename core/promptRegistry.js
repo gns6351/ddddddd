@@ -60,16 +60,17 @@ function createPromptRegistry(contentDir, registered) {
     if (!cache.has(key)) cache.set(key, loadPrompt(contentDir, name, version));
     return cache.get(key);
   };
-  const render = (name, vars) => {
-    const p = get(name);
-    const examples = p.examples.map((e) => JSON.stringify(e, null, 0)).join('\n');
-    return p.body.replace(/\{\{(\w+)\}\}/g, (_, k) => {
-      if (k === 'examples') return examples;
-      if (!(k in vars)) throw new Error(`missing variable ${k}`);
-      return String(vars[k]);
-    });
-  };
-  return { get, render, loadVersion: (name, version) => loadPrompt(contentDir, name, version) };
+  return { get, render: (name, vars) => renderPrompt(get(name), vars), loadVersion: (name, version) => loadPrompt(contentDir, name, version) };
 }
 
-module.exports = { createPromptRegistry, parseFrontMatter, loadPrompt };
+/** 단일 패스 치환: 조언 원문 속 {{...}}는 다시 해석하지 않음(데이터로 취급) */
+function renderPrompt(p, vars) {
+  const examples = p.examples.map((e) => JSON.stringify(e, null, 0)).join('\n');
+  return p.body.replace(/\{\{(\w+)\}\}/g, (_, k) => {
+    if (k === 'examples') return examples;
+    if (!(k in vars)) throw new Error(`missing variable ${k}`);
+    return String(vars[k]);
+  });
+}
+
+module.exports = { createPromptRegistry, parseFrontMatter, loadPrompt, renderPrompt };
