@@ -1,0 +1,109 @@
+{
+  "id": "A-job",
+  "version": "0.0-unapproved",
+  "title": "취업과 실패",
+  "name": "[미확정:B01]",
+  "image": "character.png",
+  "summary": "탈락이 두려워 지원을 미루고 있어요",
+  "automatic_thought": "떨어지면 나는 능력이 없는 사람이야.",
+  "emotion_behavior": "불안, 지원 미루기",
+  "facts": [
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]"
+  ],
+  "dialogue": {
+    "mode": "script",
+    "intro": "[미확정:B01]",
+    "turns": [
+      {
+        "turn": 1,
+        "choices": [
+          {
+            "id": "A1a",
+            "text": "요즘 어떤 상황이에요?",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "A1b",
+            "text": "지금 기분이 어때요?",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "A1c",
+            "text": "최근에 무슨 일이 있었어요?",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 2,
+        "choices": [
+          {
+            "id": "A2a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "A2b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "A2c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 3,
+        "choices": [
+          {
+            "id": "A3a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          },
+          {
+            "id": "A3b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          },
+          {
+            "id": "A3c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          }
+        ]
+      }
+    ],
+    "closing": "제가 어떻게 생각하면 좋을까요?"
+  },
+  "persona": {
+    "prompt": "persona@v1",
+    "style": "[미확정:B01]"
+  }
+}

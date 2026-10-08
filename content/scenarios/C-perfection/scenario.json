@@ -1,0 +1,109 @@
+{
+  "id": "C-perfection",
+  "version": "0.0-unapproved",
+  "title": "완벽주의와 미루기",
+  "name": "[미확정:B01]",
+  "image": "character.png",
+  "summary": "[미확정:B01] (명세 표 고민: 완벽하게 하려다 시작을 못 함)",
+  "automatic_thought": "완벽하게 못 하면 시작할 의미가 없어.",
+  "emotion_behavior": "압박감, 과제 미루기",
+  "facts": [
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]"
+  ],
+  "dialogue": {
+    "mode": "script",
+    "intro": "[미확정:B01]",
+    "turns": [
+      {
+        "turn": 1,
+        "choices": [
+          {
+            "id": "C1a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "C1b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "C1c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 2,
+        "choices": [
+          {
+            "id": "C2a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "C2b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "C2c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 3,
+        "choices": [
+          {
+            "id": "C3a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          },
+          {
+            "id": "C3b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          },
+          {
+            "id": "C3c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          }
+        ]
+      }
+    ],
+    "closing": "제가 어떻게 생각하면 좋을까요?"
+  },
+  "persona": {
+    "prompt": "persona@v1",
+    "style": "[미확정:B01]"
+  }
+}

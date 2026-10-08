@@ -1,0 +1,105 @@
+{
+  "id": "T-gamma",
+  "version": "test-1",
+  "title": "[TEST] 가상 시나리오 C",
+  "name": "[TEST] 가상인물 C",
+  "image": "character.svg",
+  "summary": "[TEST] 가상 고민 C",
+  "automatic_thought": "[TEST] 가상 자동적 사고 C.",
+  "emotion_behavior": "[TEST] 가상 감정 C",
+  "facts": [
+    "[TEST] 가상 사실 C1",
+    "[TEST] 가상 사실 C2",
+    "[TEST] 가상 사실 C3",
+    "[TEST] 가상 사실 C4",
+    "[TEST] 가상 사실 C5"
+  ],
+  "dialogue": {
+    "mode": "script",
+    "intro": "[TEST] 가상 소개 C",
+    "turns": [
+      {
+        "turn": 1,
+        "choices": [
+          {
+            "id": "C1a",
+            "text": "[TEST] 질문 C1a",
+            "reply": "[TEST] 대답 C1a",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "C1b",
+            "text": "[TEST] 질문 C1b",
+            "reply": "[TEST] 대답 C1b",
+            "fact_ids": [
+              1
+            ]
+          },
+          {
+            "id": "C1c",
+            "text": "[TEST] 질문 C1c",
+            "reply": "[TEST] 대답 C1c",
+            "fact_ids": [
+              2
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 2,
+        "choices": [
+          {
+            "id": "C2a",
+            "text": "[TEST] 질문 C2a",
+            "reply": "[TEST] 대답 C2a",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "C2b",
+            "text": "[TEST] 질문 C2b",
+            "reply": "[TEST] 대답 C2b",
+            "fact_ids": [
+              1
+            ]
+          },
+          {
+            "id": "C2c",
+            "text": "[TEST] 질문 C2c",
+            "reply": "[TEST] 대답 C2c",
+            "fact_ids": [
+              2
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 3,
+        "choices": [
+          {
+            "id": "C3a",
+            "text": "[TEST] 질문 C3a",
+            "reply": "[TEST] 대답 C3a [TEST] 가상 자동적 사고 C.",
+            "fact_ids": []
+          },
+          {
+            "id": "C3b",
+            "text": "[TEST] 질문 C3b",
+            "reply": "[TEST] 대답 C3b [TEST] 가상 자동적 사고 C.",
+            "fact_ids": []
+          },
+          {
+            "id": "C3c",
+            "text": "[TEST] 질문 C3c",
+            "reply": "[TEST] 대답 C3c [TEST] 가상 자동적 사고 C.",
+            "fact_ids": []
+          }
+        ]
+      }
+    ],
+    "closing": "[TEST] 마지막 말 C"
+  }
+}

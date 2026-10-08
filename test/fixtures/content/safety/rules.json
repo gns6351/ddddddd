@@ -1,0 +1,31 @@
+{
+  "version": "test-rules-1",
+  "_note": "[TEST] 가상 테스트 토큰. 실제 위험 패턴 아님",
+  "urgent": [
+    {
+      "id": "tu1",
+      "pattern": "TEST_URGENT"
+    }
+  ],
+  "unsafe": [
+    {
+      "id": "tx1",
+      "pattern": "TEST_UNSAFE"
+    }
+  ],
+  "blaming": [
+    {
+      "id": "tb1",
+      "pattern": "TEST_BLAMING"
+    }
+  ],
+  "fallback": {
+    "unsafe": [
+      {
+        "id": "tfu1",
+        "pattern": "TEST_FB_UNSAFE"
+      }
+    ],
+    "blaming": []
+  }
+}

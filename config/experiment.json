@@ -1,0 +1,17 @@
+{
+  "app_version": "3.4.0",
+  "analysis_plan_version": "[미확정:B20]",
+  "frozen": false,
+  "scenarios": ["A-job", "B-refusal", "C-perfection"],
+  "prompts": { "transform": "v2" },
+  "llm_provider": "gemini",
+  "model": "[미확정:B04]",
+  "model_checked_at": "[미확정:B04]",
+  "thinking": "low",
+  "consent_version": "[미확정:B02]",
+  "llm_timeout_ms": 10000,
+  "token_ttl_hours": 4,
+  "receipt_ttl_hours": 24,
+  "safety": { "responder_id": "[미확정:B05]" },
+  "storage_paths": ["export", "coding", "interviews", "stats", "backups"]
+}

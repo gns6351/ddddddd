@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "scenario v3.4",
+  "type": "object",
+  "required": ["id", "version", "title", "name", "image", "summary", "automatic_thought", "emotion_behavior", "facts", "dialogue"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9-]+$" },
+    "version": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "image": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.(png|jpg|jpeg|webp|svg)$" },
+    "summary": { "type": "string", "minLength": 1 },
+    "automatic_thought": { "type": "string", "minLength": 1 },
+    "emotion_behavior": { "type": "string", "minLength": 1 },
+    "facts": { "type": "array", "minItems": 5, "maxItems": 7, "items": { "type": "string", "minLength": 1 } },
+    "dialogue": {
+      "type": "object",
+      "required": ["mode", "intro", "turns", "closing"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "const": "script" },
+        "intro": { "type": "string", "minLength": 1 },
+        "closing": { "type": "string", "minLength": 1 },
+        "turns": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["turn", "choices"],
+            "additionalProperties": false,
+            "properties": {
+              "turn": { "type": "integer", "minimum": 1, "maximum": 3 },
+              "choices": {
+                "type": "array", "minItems": 3, "maxItems": 3,
+                "items": {
+                  "type": "object",
+                  "required": ["id", "text", "reply", "fact_ids"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+                    "text": { "type": "string", "minLength": 1 },
+                    "reply": { "type": "string", "minLength": 1 },
+                    "fact_ids": { "type": "array", "maxItems": 2, "items": { "type": "integer", "minimum": 0 } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "properties": { "prompt": { "type": "string" }, "style": { "type": "string" } }
+    }
+  }
+}

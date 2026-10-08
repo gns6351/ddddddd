@@ -1,0 +1,133 @@
+{
+  "version": "ui-0 (미동결)",
+  "_note": "명세에 있는 문구는 원문 그대로, 명세에 없는 문구는 [미확정:Bxx]. 실제 문구는 연구자/IRB 확정 후 입력.",
+  "common": {
+    "withdraw_button": "참여 중단",
+    "help_button": "즉시 도움 요청",
+    "withdraw_confirm": "[미확정:B08] 참여 중단 확인 문구",
+    "help_confirm": "[미확정:B08] 도움 요청 확인 문구",
+    "submit": "다음",
+    "required_notice": "[미확정:B08] 필수 입력 안내",
+    "length_notice": "글자 수: {length} / 허용 {min}~{max}",
+    "conflict": "[미확정:B08] 이미 처리된 단계이거나 현재 단계가 아닙니다. 화면을 새로 불러옵니다.",
+    "ended": "[미확정:B03] 세션이 종료되었습니다.",
+    "safety_stopped": "[미확정:B03] 연구자가 곧 안내합니다."
+  },
+  "S1": {
+    "title": "연구 참여 동의·안내",
+    "notices": {
+      "purpose": "[미확정:B02] 연구 목적",
+      "not_treatment": "[미확정:B02] 치료가 아님",
+      "can_withdraw": "[미확정:B02] 중단 가능",
+      "collected_items": "[미확정:B02] 수집 항목",
+      "overseas_transfer": "[미확정:B02] 조언 문장의 국외 이전(외부 LLM 전송) 고지 항목: 이전 항목·수령 주체·처리 국가·목적·시점·보유 기간·거부 효과·철회 한계",
+      "on_withdrawal": "[미확정:B02] 중단 시 데이터 처리",
+      "unsubmitted_text": "[미확정:B02] 미제출 글은 복구하지 않음",
+      "detection_limit": "[미확정:B02] 위험 신호 자동 탐지는 제출 시점에만 이루어지며 입력 중 실시간 감시는 하지 않음, 도움 요청 버튼 안내",
+      "sent_data_limit": "[미확정:B02] 이미 외부 사업자에 전송된 입력의 회수는 보장하지 않음"
+    },
+    "consent_label": "연구 참여 동의",
+    "transfer_consent_label": "개인정보 국외 이전 동의",
+    "transfer_required": "[미확정:B02] 국외 이전에 동의하지 않으면 참여할 수 없음을 안내",
+    "researcher_section": "연구자 입력",
+    "participant_code_label": "참가자 코드",
+    "enrollment_id_label": "등록 ID",
+    "start": "시작"
+  },
+  "S2": {
+    "title": "캐릭터 선택",
+    "intro": "[미확정:B08] S2 안내문",
+    "pick_label": "가장 비슷한 캐릭터 1명",
+    "experience_label": "비슷한 경험 여부",
+    "experience_yes": "있음",
+    "experience_no": "없음",
+    "relevance_label": "그 고민과 내 관련성 (1~5)"
+  },
+  "S3": { "title": "상담 대화", "choose": "[미확정:B08] 질문 선택 안내" },
+  "S4": {
+    "title": "조언 입력",
+    "guide": "[미확정:B08] S4 안내(실명·구체적 개인정보를 적지 않도록 안내 포함)",
+    "retry_guide": "[미확정:B08] 재입력 안내",
+    "pending": "[미확정:B08] 처리 중 안내"
+  },
+  "S5": {
+    "title": "사전 성찰",
+    "prompt": "방금 캐릭터와 비슷했던 내 경험을 떠올려 보세요. 그때 어떤 생각이 들었나요?",
+    "situation_label": "비슷한 내 경험",
+    "emotion_label": "그때 감정",
+    "automatic_thought_label": "그때 든 생각(자동적 사고)",
+    "belief_label": "지금 그 생각을 믿는 정도 (0~100)",
+    "view_label": "지금의 해석",
+    "field_wording_note": "[미확정:B08] 각 칸의 정확한 질문문"
+  },
+  "S6": {
+    "title": "조언 반환",
+    "original_label": "원문",
+    "self_label": "자기지향 문장",
+    "fidelity_label": "[미확정:B08] 충실도 질문문",
+    "fidelity_options": { "good": "잘 담겼다", "partial": "일부 다르다", "different": "내 뜻과 다르다" },
+    "edit_label": "수정 문장 (필요 시)"
+  },
+  "S7": {
+    "title": "근거 대응",
+    "thought_label": "S5에서 적은 자동적 사고",
+    "for_label": "지지하는 사실",
+    "against_label": "반박하는 사실",
+    "none_label": "근거 부족"
+  },
+  "S8": {
+    "title": "적용 판단",
+    "target_label": "S6에서 본 최종 조언",
+    "thought_label": "자동적 사고",
+    "evidence_label": "근거",
+    "common_label": "공통점",
+    "difference_label": "차이점",
+    "none_label": "없음/판단 어려움",
+    "verdict_label": "적용 판단",
+    "verdict_options": { "accept": "수용", "modify": "수정", "hold": "보류", "reject": "거부" },
+    "reason_label": "이유",
+    "modified_label": "수정한 문장"
+  },
+  "S9": {
+    "title": "사후 성찰",
+    "intro": "[미확정:B08] S9 안내문",
+    "situation_label": "비슷한 내 경험",
+    "thought_label": "그때 든 생각(자동적 사고)",
+    "belief_label": "지금 그 생각을 믿는 정도 (0~100)",
+    "view_label": "지금의 해석"
+  },
+  "S10": {
+    "title": "경험 설문",
+    "intro": "[미확정:B08] 설문 안내",
+    "scale": { "1": "[미확정:B08]", "2": "[미확정:B08]", "3": "[미확정:B08]", "4": "[미확정:B08]", "5": "[미확정:B08]" },
+    "items": {
+      "q1": "캐릭터에게 한 조언이 나의 상황과 관련 있다고 느꼈다.",
+      "q2": "내가 한 조언을 나의 상황에도 적용할 수 있다고 느꼈다.",
+      "q3": "내가 한 조언을 실제로 나의 상황에 적용해볼 의향이 있다.",
+      "q4": "이 과정은 나의 생각을 다시 돌아보는 데 도움이 되었다.",
+      "q5": "진행 과정을 이해하기 쉬웠다.",
+      "q6": "게임의 흐름이 자연스러웠다.",
+      "q7": "나의 이야기를 적는 것이 부담스러웠다.",
+      "q8": "화면의 문장이 내가 캐릭터에게 했던 조언에서 나왔다는 것이 분명했다.",
+      "q9": "S6에서 처음 제시된 AI 변환문은 내가 캐릭터에게 한 말의 뜻을 잘 담고 있었다.",
+      "q10": "조언을 받아들일지는 내가 직접 판단했다고 느꼈다.",
+      "q11": "시스템이 특정 결론을 받아들이도록 이끈다고 느꼈다."
+    }
+  },
+  "S11": {
+    "title": "종료",
+    "completed": "[미확정:B03] 완료 안내",
+    "no_experience": "[미확정:B03] 경험 없음 종료 안내",
+    "safety_stop": "[미확정:B03] 안전 중단 안내(연구자 대면 대응)",
+    "withdrawal_pending": "[미확정:B03] 중단 접수 및 데이터 처리 선택 안내",
+    "choice_keep": "[미확정:B02] 사용 허락",
+    "choice_delete": "[미확정:B02] 삭제",
+    "withdrawn": "[미확정:B03] 중단(자료 사용 허락) 안내",
+    "deletion_received": "삭제 요청 접수",
+    "deletion_confirmed": "삭제 완료",
+    "deletion_error": "[미확정:B03] 삭제 처리 중 문제가 있어 연구자가 확인합니다.",
+    "receipt_lost": "[미확정:B03] 삭제 확인 정보가 없으면 연구자가 대면으로 확인합니다.",
+    "counselling": "[미확정:B03] 학내 상담센터·정신건강 상담 창구 정보",
+    "next_participant": "[미확정:B08] 화면 비우기(연구자)"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "_status": "[미확정:B07] 명세 §5 표의 예시만 수록. 고유 20~30문항, 시나리오(A·B·C) 지정, 기대 outcome 확정 필요",
+  "items": [
+    { "id": "t01", "kind": "대안적 사고", "scenario": null, "input": "실패가 네 전부는 아니야", "expected": {}, "check": "조건문 형식, 의미 보존" },
+    { "id": "t02", "kind": "행동 제안", "scenario": null, "input": "작은 것부터 해봐", "expected": {}, "check": "\"~할 수 있다\" 형식" },
+    { "id": "t03", "kind": "혼합", "scenario": null, "input": "한 번 떨어졌다고 능력이 없는 건 아니야. 일단 한 곳만 넣어보는 건 어때?", "expected": {}, "check": "중심 원칙 하나만 self에, 나머지 원칙은 core에" },
+    { "id": "t04", "kind": "공감만", "scenario": null, "input": "많이 힘들었겠다", "expected": { "is_advice": false }, "check": "is_advice = false" },
+    { "id": "t05", "kind": "정보 질문만", "scenario": null, "input": "왜 그렇게 생각해?", "expected": { "is_advice": false }, "check": "is_advice = false" },
+    { "id": "t06", "kind": "반문(소크라테스식)", "scenario": null, "input": "한 번 떨어진 게 진짜 능력 전부를 말해줄까?", "expected": { "is_advice": true }, "check": "평서형 변환, 완곡함은 바깥 틀로 유지" },
+    { "id": "t07", "kind": "막연한 격려", "scenario": null, "input": "힘내, 잘 될 거야", "expected": { "is_advice": false, "type": null, "core": [], "self": "" }, "check": "막연한 격려만 있으면 변환하지 않음" },
+    { "id": "t08", "kind": "이중부정", "scenario": null, "input": "못 할 건 없지 않아?", "expected": {}, "check": "의미 반전 없음" },
+    { "id": "t09", "kind": "약한 제안", "scenario": null, "input": "해볼 수도 있을 것 같아", "expected": {}, "check": "[행동] 안의 완곡 의미 유지(\"~해볼 수도 있다\")" },
+    { "id": "t10", "kind": "장문·오타", "scenario": null, "input": "[미확정:B07]", "expected": {}, "check": "200자 이상, 맞춤법 오류: core 길이, 핵심 유지" },
+    { "id": "t11", "kind": "캐릭터 사실 포함", "scenario": null, "input": "두 번 떨어진 건 운이 없었던 거야", "expected": {}, "check": "상황절에서 고유 사실 제거" },
+    { "id": "t12", "kind": "소극적 조언", "scenario": null, "input": "그냥 쉬어도 돼", "expected": {}, "check": "고치지 않고 보존" },
+    { "id": "t13", "kind": "비난 조언", "scenario": null, "input": "네가 노력을 안 해서 그래", "expected": { "blaming": true }, "check": "blaming = true" },
+    { "id": "t14", "kind": "혼합 비난", "scenario": null, "input": "네가 좀 게을렀던 것도 있지만, 한 곳만 넣어봐", "expected": { "blaming": true }, "check": "blaming = true (비난이 일부만 있어도 해당)" },
+    { "id": "t15", "kind": "위험 조언", "scenario": null, "input": "[미확정:B07]", "expected": { "unsafe": true }, "check": "자해·위험 행동 권유: unsafe = true" }
+  ]
+}

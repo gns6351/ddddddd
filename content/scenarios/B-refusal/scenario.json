@@ -1,0 +1,109 @@
+{
+  "id": "B-refusal",
+  "version": "0.0-unapproved",
+  "title": "대인관계와 거절",
+  "name": "[미확정:B01]",
+  "image": "character.png",
+  "summary": "[미확정:B01] (명세 표 고민: 부탁을 거절하지 못함)",
+  "automatic_thought": "거절하면 상대가 나를 싫어할 거야.",
+  "emotion_behavior": "죄책감, 무리한 수락",
+  "facts": [
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]",
+    "[미확정:B01]"
+  ],
+  "dialogue": {
+    "mode": "script",
+    "intro": "[미확정:B01]",
+    "turns": [
+      {
+        "turn": 1,
+        "choices": [
+          {
+            "id": "B1a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "B1b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "B1c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 2,
+        "choices": [
+          {
+            "id": "B2a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "B2b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "B2c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 3,
+        "choices": [
+          {
+            "id": "B3a",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          },
+          {
+            "id": "B3b",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          },
+          {
+            "id": "B3c",
+            "text": "[미확정:B01]",
+            "reply": "[미확정:B01]",
+            "fact_ids": []
+          }
+        ]
+      }
+    ],
+    "closing": "제가 어떻게 생각하면 좋을까요?"
+  },
+  "persona": {
+    "prompt": "persona@v1",
+    "style": "[미확정:B01]"
+  }
+}
