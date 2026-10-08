@@ -40,5 +40,5 @@ const file = path.join(dir, `check-transform-${new Date().toISOString().slice(0,
 fs.writeFileSync(file, toCsv(rows));
 const changed = items.filter((it) => new Set(rows.filter((x) => x.id === it.id).map((x) => x.outcome)).size > 1).map((it) => it.id);
 console.log(`\n저장: ${file}`);
-console.log(`결과: ${['ok', 'not_advice', 'unsafe', 'blaming', 'fallback'].map((o) => `${o} ${rows.filter((x) => x.outcome === o).length}`).join(' · ')}`);
+console.log(`결과: ${['ok', 'not_advice', 'unsafe', 'blaming', 'safety_hold', 'fallback'].map((o) => `${o} ${rows.filter((x) => x.outcome === o).length}`).join(' · ')}`);
 if (repeat > 1) console.log(`반복마다 결과가 달라진 문장: ${changed.join(', ') || '없음'}`);

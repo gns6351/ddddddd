@@ -33,6 +33,7 @@ export function flattenSession(s, rules) {
     advice_final: val(fa?.text),
     outcome: val(s.advice.outcome),
     outcome_source: val(fa?.source),
+    safety_source: val(fa?.safetySource),
     rule_hits: (fa?.ruleHits || []).join(';'),
     advice_type: val(fa?.result?.type),
     core: (fa?.result?.core || []).join(' | '),

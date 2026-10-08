@@ -206,3 +206,13 @@ export function gwetAC1(a, b, cats = [...new Set([...a, ...b])]) {
   pe /= q - 1;
   return pe === 1 ? NaN : (po - pe) / (1 - pe);
 }
+
+// 분위수 (type 7, 선형 보간 — R 기본값·numpy 기본값과 같음)
+export function quantile(xs, p) {
+  const s = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+  if (!s.length) return NaN;
+  const h = (s.length - 1) * p;
+  const lo = Math.floor(h);
+  const hi = Math.ceil(h);
+  return s[lo] + (h - lo) * (s[hi] - s[lo]);
+}

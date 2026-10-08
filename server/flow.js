@@ -152,7 +152,7 @@ export function doDialogue(s, d, content) {
   if (d.turn !== turn) throw new FlowError('이미 지난 질문이에요. 화면을 다시 불러올게요.', 409);
   const choice = sc.dialogue.turns[turn - 1].choices.find((x) => x.id === d.choice_id);
   if (!choice) throw new FlowError('질문을 하나 골라 주세요', 422, { field: 'choice_id', reason: 'required' });
-  s.dialogue.push({ turn, choiceId: choice.id, question: choice.text, reply: choice.reply, at: now() });
+  s.dialogue.push({ turn, choiceId: choice.id, question: choice.text, reply: choice.reply, factIds: choice.fact_ids || [], at: now() });
   if (turn === sc.dialogue.turns.length) moveTo(s, 'S4');
 }
 
@@ -217,6 +217,7 @@ export function doJudge(s, d) {
     verdict,
     reason: c.text('reason', d.reason),
     modified_text: verdict === 'modify' ? c.text('modified_text', d.modified_text) : null,
+    target_text: s.returned.final_self,
     at: now(),
   };
   moveTo(s, 'S9');
@@ -234,7 +235,10 @@ export function doSurvey(s, d) {
   const c = checker('S10');
   const shown = shownItemsFor(s.advice.outcome);
   const out = { shown_items: shown };
-  for (const q of LIKERT) out[q] = shown.includes(q) ? c.int(q, d[q], 1, 5) : null;
+  for (const q of LIKERT) {
+    if (!shown.includes(q) && d[q] != null) throw new FlowError('보이지 않은 문항에는 답할 수 없어요', 422, { field: q, reason: 'not_shown' });
+    out[q] = shown.includes(q) ? c.int(q, d[q], 1, 5) : null;
+  }
   out.at = now();
   s.survey = out;
   s.endType = 'completed';
@@ -289,10 +293,13 @@ export function publicView(s, content) {
     case 'S7':
       v.automatic_thought = s.reflectPre.automatic_thought;
       break;
-    case 'S8':
+    case 'S8': {
       v.target = s.returned.final_self;
       v.automatic_thought = s.reflectPre.automatic_thought;
+      const { evidence_for, for_none, evidence_against, against_none } = s.evidence;
+      v.evidence = { evidence_for, for_none, evidence_against, against_none };
       break;
+    }
     case 'S9':
       v.situation = s.reflectPre.situation;
       v.automatic_thought = s.reflectPre.automatic_thought;

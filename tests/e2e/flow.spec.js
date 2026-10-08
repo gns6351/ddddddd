@@ -14,11 +14,11 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
 
   // S2: 첫 캐릭터는 경험 없음 → 다시 S2, 두 번째 캐릭터 선택
   await page.locator('.choice').first().click();
-  await page.getByText('없어요').click();
+  await page.getByText('없음', { exact: true }).click();
   await page.getByRole('button', { name: '다음' }).click();
   await expect(page.locator('.choice.off')).toHaveCount(1);
   await page.locator('.choice:not(.off)').first().click();
-  await page.getByText('있어요').click();
+  await page.getByText('있음', { exact: true }).click();
   await page.getByRole('radiogroup', { name: /관련/ }).getByText('4', { exact: true }).click();
   await shot(page, '02-pick');
   await page.getByRole('button', { name: '다음' }).click();
@@ -37,7 +37,7 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
   await page.getByRole('button', { name: '다음' }).click();
 
   // S5
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('내 경험 떠올리기');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('사전 성찰');
   await page.locator('#situation').fill('[TEST] 비슷한 경험');
   await page.locator('#emotion').fill('[TEST] 불안');
   await page.locator('#automatic_thought').fill('[TEST] 나는 안 돼');
@@ -60,7 +60,7 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
   // S8
   await page.locator('#common').fill('[TEST] 공통점');
   await page.locator('#difference_none').check();
-  await page.getByText('받아들임').click();
+  await page.getByText('수용', { exact: true }).click();
   await page.locator('#reason').fill('[TEST] 이유');
   await shot(page, '05-judge');
   await page.getByRole('button', { name: '다음' }).click();
@@ -85,7 +85,7 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto('/admin');
   await expect(page.locator('.tile').first()).toContainText('1');
-  await expect(page.locator('#analysis')).toContainText('믿음 정도 사전·사후 검정');
+  await expect(page.locator('#analysis')).toContainText('믿음 정도 사전·사후 (참고 검정)');
   await expect(page.locator('svg.chart .indiv')).toHaveCount(2); // 전체 + ok 경로
   await shot(page, '06-admin');
   await page.getByRole('button', { name: '세션 기록' }).click();

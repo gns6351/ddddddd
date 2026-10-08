@@ -51,3 +51,4 @@
 - 테스트(실행함): `npm test` 14/14 통과(흐름·분기·409/422·규칙·fallback·동시 제출·위험 키워드·그만하기/삭제·Gemini 요청 형식(가짜 클라이언트)·thinking 미지원 재시도·대시보드 접근·입장 코드·통계 scipy 대조), `npm run test:e2e` 2/2 통과(브라우저 완주 + 대시보드, 360px 가로 스크롤 없음).
 - 미검증: 실제 Gemini API 호출(이 환경에 키 없음), cloudflared 터널(이 환경에 미설치).
 - RQ3 추가: 규칙 기반 비교 변환(`server/rulebased.js`), 출처를 가린 웹 코딩(코더1·2·합의, `server/rq3.js`, 대시보드 'RQ3 코딩' 탭), 방식별 오류율·유형·심각도·코더 일치도(κ·PABAK·AC1)·입력 차수 기준 ok 성공률·S6×코더 판정 집계, 출처 공개 CSV. 테스트: `npm test` 16/16, e2e 2/2(RQ3 코딩 포함).
+- 명세 대조 검토 후 수정: S2·S4~S10 문구를 v3.4 명세 문구로 복원(간편판에서 바뀐 S5 안내·라벨, S6 원문/자기지향 문장, S7 근거 부족, S8 수용·수정·보류·거부, S10 q9 "S6에서", 5단계 척도 라벨), S8에 S7 근거 표시·수정 문장 빈칸 시작·target_text 저장, S10 미표시 문항 422, S3 fact_ids 저장. 변환: urgent 조언은 외부 전송 없이 safety_hold, raw unsafe/blaming 래치 → safety_hold(llm_partial), 비조언 응답 필드 조건 검사, try당 10초, 프롬프트 temperature 전달, safety_source 기록. 대시보드: 설문 중앙값[IQR]·역문항 표시, 믿음 검정은 참고로 표시, 모의 세션 섞임 경고. 테스트 `npm test` 19/19, e2e 2/2.

@@ -169,7 +169,7 @@ function summarize(db, sessions) {
 
   // 전체 S4 입력 차수 분모: ok 성공률과 실패 경로
   const attempts = sessions.flatMap((s) => s.advice.attempts);
-  const outcomes = ['ok', 'not_advice', 'unsafe', 'blaming', 'fallback'].map((o) => ({ outcome: o, count: attempts.filter((x) => x.outcome === o).length }));
+  const outcomes = ['ok', 'not_advice', 'unsafe', 'blaming', 'safety_hold', 'fallback'].map((o) => ({ outcome: o, count: attempts.filter((x) => x.outcome === o).length }));
 
   // 참가자 판단(S6) × 코더 판정(AI 문장)
   const llmBySession = new Map(byMethod.llm.map((id) => [db.items[id].sessionId, resolved(db, id)]));

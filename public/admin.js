@@ -144,7 +144,7 @@ function renderAnalysis(a) {
   );
 
   const beliefCharts = h('div', { class: 'grid3' }, a.belief.map((p) => panel(p.label, `n=${p.n}. 회색 선은 참가자 한 명, 파란 선은 평균.`, slope(p))));
-  const beliefStats = panel('믿음 정도 사전·사후 검정', '변화 = 사후 − 사전 (0~100). 대괄호는 95% 신뢰구간, dz는 대응 표본 효과크기.',
+  const beliefStats = panel('믿음 정도 사전·사후 (참고 검정)', '명세 §8은 개인별 변화의 기술통계를 우선합니다(감소를 성공으로 해석하지 않음, S7·S8 과제 요구로도 설명 가능). 아래 검정은 참고용. 변화 = 사후 − 사전, 대괄호는 95% 신뢰구간.',
     table(['집단', 'n', '사전 M(SD)', '사후 M(SD)', '변화 [95% CI]', 't (df)', 'p', 'dz', '윌콕슨 p'],
       a.belief.map((p) => [
         p.label, p.n, mdsd(p.pre), mdsd(p.post),
@@ -169,9 +169,10 @@ function renderAnalysis(a) {
     }), [1, 2, 3, 4, 5]),
     h('p', { class: 'note' }, `근거(S7) 응답 ${a.evidence.n}명 중 뒷받침 사실 없음 ${a.evidence.forNone}명, 반대 사실 없음 ${a.evidence.againstNone}명.`));
 
-  const survey = panel('마무리 설문 (1~5)', 'ok 경로는 11문항, 그 외 경로는 q4·q5·q6·q7·q11만 응답합니다. 칸은 평균(SD), 괄호 밖 n.',
-    table(['문항', '전체 n', '전체', 'ok n', 'ok', '그 외 n', '그 외'],
-      a.survey.map((q) => [`${q.id}. ${q.label}`, q.all.n, mdsd(q.all), q.ok.n, mdsd(q.ok), q.nonOk.n, mdsd(q.nonOk)]), [1, 2, 3, 4, 5, 6]));
+  const mdn = (d) => (d.n ? `${num(d.median, 1)} [${num(d.q1, 1)}–${num(d.q3, 1)}]` : '—');
+  const survey = panel('마무리 설문 (1~5)', 'ok 경로는 11문항, 그 외 경로는 q4·q5·q6·q7·q11만 응답합니다. 칸은 중앙값 [사분위 범위], 평균(SD)은 참고. (역) = 높을수록 부정적인 문항.',
+    table(['문항', 'n', '전체', 'ok n', 'ok', '그 외 n', '그 외', '전체 평균(SD)'],
+      a.survey.map((q) => [`${q.id}${q.reverse ? ' (역)' : ''}. ${q.label}`, q.all.n, mdn(q.all), q.ok.n, mdn(q.ok), q.nonOk.n, mdn(q.nonOk), mdsd(q.all)]), [1, 2, 3, 4, 5, 6, 7]));
 
   $('analysis').replaceChildren(
     h('h2', {}, '한눈에 보기'), summary,
@@ -280,7 +281,7 @@ async function load() {
     renderAnalysis(last);
     renderSessions(await getJson('/api/admin/sessions'));
     for (const id of ['toolbar', 'tabs']) $(id).hidden = false;
-    $('updated').textContent = `${new Date().toLocaleTimeString('ko-KR')} 기준${last.n.excluded ? ` · 필터로 제외 ${last.n.excluded}개` : ''}`;
+    $('updated').textContent = `${new Date().toLocaleTimeString('ko-KR')} 기준${last.n.excluded ? ` · 필터로 제외 ${last.n.excluded}개` : ''}${last.n.mock && last.n.mock < last.n.sessions ? ` · ⚠ 모의 세션 ${last.n.mock}개 섞임` : ''}`;
   } catch (e) {
     $('err').textContent = e.message;
     if (e.status === 401) { meta = null; $('login').hidden = false; }

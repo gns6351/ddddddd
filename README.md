@@ -95,7 +95,7 @@ AI로 보내는 것은 **S4 조언 + 캐릭터 상황 설명**뿐입니다. S5 �
 npm run check:transform -- --repeat 3
 ```
 `content/prompts/transform/tests.json`의 문장을 3번씩 변환해 `results/`에 CSV를 만듭니다. 반복마다 결과가 달라진 문장도 알려 줍니다.
-모의 모드에서 시험하려면 조언 끝에 `#notadvice #unsafe #blaming #badjson #error`를 붙이면 해당 경로로 갑니다.
+모의 모드에서 시험하려면 조언 끝에 `#notadvice #unsafe #blaming #badjson #latchbad #error`를 붙이면 해당 경로로 갑니다.
 
 ## 테스트
 

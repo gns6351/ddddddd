@@ -103,3 +103,44 @@ test('입장 코드: 외부 접속만 요구, 맞으면 시작', async () => {
     assert.match(local.body.participantId, /^anon-/);
   } finally { await t.close(); }
 });
+
+test('래치: 1차 원문에 unsafe=true(형식 오류) → 2차가 ok여도 safety_hold, 둘 다 오류면 safety_hold', async () => {
+  const g = fakeGemini(['{"is_advice": true, "unsafe": true', OK_JSON, '{"blaming": "true"', 'oops']);
+  const t = await boot({ llmModeEnv: 'live', apiKey: 'k' }, { geminiClient: g });
+  try {
+    const a = await toAdvice(t, 'L1');
+    let r = await t.post(`/api/sessions/${a.id}/advice`, { advice: '[TEST] 조언' });
+    assert.equal(r.body.stage, 'S5');
+    let s = (await t.get(`/api/admin/sessions/${a.id}`)).body;
+    assert.equal(s.advice.outcome, 'safety_hold');
+    assert.equal(s.advice.attempts[0].safetySource, 'llm_partial');
+    r = await t.post(`/api/sessions/${a.id}/reflect_pre`, S5);
+    assert.equal(r.body.stage, 'S7'); // 변환문 노출 없음
+    const b = await toAdvice(t, 'L2');
+    await t.post(`/api/sessions/${b.id}/advice`, { advice: '[TEST] 조언' });
+    s = (await t.get(`/api/admin/sessions/${b.id}`)).body;
+    assert.equal(s.advice.outcome, 'safety_hold');
+    assert.equal(g.calls.length, 4);
+  } finally { await t.close(); }
+});
+
+test('위험 신호가 있는 조언은 외부로 보내지 않음(safety_hold), temperature는 프롬프트 머리말 값', async () => {
+  const g = fakeGemini([OK_JSON]);
+  const t = await boot({ llmModeEnv: 'live', apiKey: 'k' }, { geminiClient: g });
+  try {
+    const a = await toAdvice(t, 'U1');
+    const r = await t.post(`/api/sessions/${a.id}/advice`, { advice: '[TEST] TEST_URGENT 조언' });
+    assert.equal(r.body.safety, true);
+    assert.equal(g.calls.length, 0);
+    assert.equal((await t.get(`/api/admin/sessions/${a.id}`)).body.advice.outcome, 'safety_hold');
+    const b = await toAdvice(t, 'U2');
+    await t.post(`/api/sessions/${b.id}/advice`, { advice: '[TEST] 조언' });
+    assert.equal(g.calls[0].config.temperature, 1);
+  } finally { await t.close(); }
+});
+
+test('비조언·위험 응답인데 type/core/self가 비어 있지 않으면 형식 오류', () => {
+  const r = judge(JSON.stringify({ is_advice: false, unsafe: false, blaming: false, type: '혼합', core: [], self: '' }));
+  assert.equal(r.error, 'NON_ADVICE_FIELDS');
+  assert.deepEqual(judge('{"unsafe": true, "x"').latch, { unsafe: true, blaming: false });
+});

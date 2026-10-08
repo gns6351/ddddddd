@@ -108,7 +108,7 @@ function slider(id, label, min = 0, max = 100) {
   const range = h('input', { type: 'range', id, min, max, step: 1, value: Math.round((min + max) / 2), class: 'untouched' });
   const mark = () => { touched = true; range.classList.remove('untouched'); out.textContent = range.value; };
   for (const ev of ['input', 'pointerdown', 'keydown']) range.addEventListener(ev, mark);
-  const el = wrapField(id, label, h('div', { class: 'scale' }, range, out), [h('div', { class: 'ends' }, h('span', {}, `${min} 전혀 믿지 않음`), h('span', {}, `${max} 완전히 믿음`))]);
+  const el = wrapField(id, label, h('div', { class: 'scale' }, range, out), [h('div', { class: 'ends' }, h('span', {}, min), h('span', {}, max))]);
   return { el, get: () => (touched ? Number(range.value) : null) };
 }
 
@@ -216,7 +216,7 @@ function renderS2() {
       h('span', {}, h('span', { class: 'name' }, c.name), h('span', { class: 'title' }, c.title), h('br'), c.summary,
         c.checked ? h('div', { class: 'muted' }, s.checked) : ''));
   }));
-  const rel = choice('relevance', s.relevance_label, [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n })), { solid: true, ends: [s.relevance_min, s.relevance_max] });
+  const rel = choice('relevance', s.relevance_label, [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n })), { solid: true });
   rel.el.hidden = true;
   const exp = choice('has_experience', s.experience_label, [{ value: true, label: s.experience_yes }, { value: false, label: s.experience_no }],
     { onChange: (v) => { rel.el.hidden = !v; } });
@@ -320,9 +320,9 @@ function renderS8() {
   const s = T.S8;
   const common = textOrNone('common', 'common_none', fill(s.common_label), s.none_label, 1000);
   const diff = textOrNone('difference', 'difference_none', fill(s.difference_label), s.none_label, 1000);
-  const modified = textField('modified_text', s.modified_label, { max: 1000, value: view.target });
+  const modified = textField('modified_text', s.modified_label, { max: 1000 });
   modified.el.hidden = true;
-  const verdict = choice('verdict', s.verdict_label, Object.entries(s.verdict_options).map(([value, o]) => ({ value, label: o.label, help: o.help })),
+  const verdict = choice('verdict', s.verdict_label, Object.entries(s.verdict_options).map(([value, label]) => ({ value, label })),
     { onChange: (v) => { modified.el.hidden = v !== 'modify'; logEvent('verdict_changed', v); } });
   const reason = textField('reason', s.reason_label);
   const bar = submitBar(null, () => {
@@ -333,7 +333,9 @@ function renderS8() {
     h('h1', {}, s.title),
     h('div', { class: 'card pair' },
       h('div', { class: 'returned' }, h('div', { class: 'muted' }, s.target_label), view.target),
-      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.thought_label), view.automatic_thought)),
+      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.thought_label), view.automatic_thought),
+      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.evidence_label),
+        `${T.S7.for_label}: ${view.evidence.for_none ? T.S7.none_label : view.evidence.evidence_for}\n${T.S7.against_label}: ${view.evidence.against_none ? T.S7.none_label : view.evidence.evidence_against}`)),
     common.el, diff.el, verdict.el, modified.el, reason.el, bar.el,
   );
 }
@@ -354,7 +356,7 @@ function renderS9() {
 
 function renderS10() {
   const s = T.S10;
-  const items = view.shown_items.map((q) => [q, choice(q, s.items[q], [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n })), { solid: true, ends: [s.scale_min, s.scale_max] })]);
+  const items = view.shown_items.map((q) => [q, choice(q, s.items[q], [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n, help: s.scale[n] })))]);
   const bar = submitBar(null, () => step('survey', Object.fromEntries(items.map(([q, c]) => [q, c.get()]))));
   app.replaceChildren(h('h1', {}, s.title), h('p', { class: 'muted' }, s.intro), ...items.map(([, c]) => c.el), bar.el);
 }

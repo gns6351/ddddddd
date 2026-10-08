@@ -21,6 +21,7 @@ test('ok 경로: S1→S6→S8→S11 완료, 대시보드·CSV에 반영', async 
     r = await t.post(`/api/sessions/${id}/evidence`, { evidence_for: '', for_none: true, evidence_against: '[TEST] 반대', against_none: false });
     assert.equal(r.body.stage, 'S8');
     assert.equal(r.body.target, '[TEST] 고친 문장');
+    assert.deepEqual(r.body.evidence, { evidence_for: '', for_none: true, evidence_against: '[TEST] 반대', against_none: false });
     r = await t.post(`/api/sessions/${id}/judge`, { common: '[TEST] 공통', common_none: false, difference: '', difference_none: true, verdict: 'modify', reason: '[TEST] 이유', modified_text: '[TEST] 내 문장' });
     assert.equal(r.body.stage, 'S9');
     r = await t.post(`/api/sessions/${id}/reflect_post`, { belief_post: 50, view_post: '[TEST] 사후' });
@@ -61,6 +62,9 @@ test('조언 아님 두 번 → ok 아닌 경로: S6·S8 생략, 설문 5문항'
     assert.equal(r.body.stage, 'S9');
     r = await t.post(`/api/sessions/${id}/reflect_post`, { belief_post: 70, view_post: '[TEST] 사후' });
     assert.deepEqual(r.body.shown_items, ['q4', 'q5', 'q6', 'q7', 'q11']);
+    const hidden = await t.post(`/api/sessions/${id}/survey`, { q1: 3, q4: 3, q5: 3, q6: 3, q7: 3, q11: 3 });
+    assert.equal(hidden.status, 422);
+    assert.equal(hidden.body.field, 'q1');
     r = await t.post(`/api/sessions/${id}/survey`, { q4: 3, q5: 3, q6: 3, q7: 3, q11: 3 });
     assert.equal(r.body.endType, 'completed');
     const a = (await t.get('/api/admin/analysis')).body;

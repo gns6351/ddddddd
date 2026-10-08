@@ -22,7 +22,7 @@ export function loadSettings(overrides = {}) {
     provider: 'gemini',
     model: env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     thinking: env.GEMINI_THINKING_LEVEL ?? 'low',
-    timeoutMs: Number(env.LLM_TIMEOUT_MS || 30000),
+    timeoutMs: Number(env.LLM_TIMEOUT_MS || 10000), // 명세: try당 10초, 최대 2회
     transformPrompt: env.TRANSFORM_PROMPT || 'v2',
     // 연구자 화면 비밀번호. 비워 두면 서버 PC(localhost)에서만 비밀번호 없이 열림
     adminToken: env.ADMIN_TOKEN || '',
@@ -75,7 +75,7 @@ export function loadPrompt(contentDir, version) {
   }
   const schema = JSON.parse(fs.readFileSync(path.join(dir, meta.output_schema || 'schema.json'), 'utf8'));
   const examples = JSON.parse(fs.readFileSync(path.join(dir, meta.examples || 'examples.json'), 'utf8'));
-  return { ref: `transform@${version}`, version, body, schema, examples, thinking: meta.thinking || null, hash: sha(raw + JSON.stringify(schema) + JSON.stringify(examples)) };
+  return { ref: `transform@${version}`, version, body, schema, examples, thinking: meta.thinking || null, temperature: meta.temperature === undefined ? null : Number(meta.temperature), hash: sha(raw + JSON.stringify(schema) + JSON.stringify(examples)) };
 }
 
 // 한 번에 치환: 조언 속 {{...}}는 다시 해석하지 않는다
