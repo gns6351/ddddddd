@@ -134,6 +134,7 @@ function view(ctx, s) {
           strings: str.S8, target_text: stepData(ctx, sid, 'S6').final_self,
           automatic_thought: stepData(ctx, sid, 'S5').automatic_thought,
           evidence: { evidence_for: s7.evidence_for, for_none: s7.for_none, evidence_against: s7.evidence_against, against_none: s7.against_none },
+          evidence_none_label: str.S7.none_label,
         };
         break;
       }
