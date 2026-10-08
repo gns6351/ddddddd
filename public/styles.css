@@ -27,3 +27,4 @@ button:disabled { opacity: .5; cursor: default; }
 .quote { white-space: pre-wrap; background: #fafafa; border-left: 3px solid var(--line); padding: 8px 12px; }
 .likert { border-top: 1px solid var(--line); padding: 8px 0; }
 .choice-btn { display: block; width: 100%; text-align: left; margin: 6px 0; }
+.demo-banner { background: #fff4ce; color: #5c4400; border-bottom: 1px solid #e0c46c; padding: 8px 16px; text-align: center; font-size: .9rem; }

@@ -1,20 +1,325 @@
 {
-  "_status": "[미확정:B07] 명세 §5 표의 예시만 수록. 고유 20~30문항, 시나리오(A·B·C) 지정, 기대 outcome 확정 필요",
+  "_status": "[미확정:B07] draft-0.1 — 명세 §5 예시 15개(t01~t15, t10·t15 문장은 초안)와 Claude 작성 초안 14개(t16~t29). 연구자 검토 후 이 표시를 지우고 동결",
   "items": [
-    { "id": "t01", "kind": "대안적 사고", "scenario": null, "input": "실패가 네 전부는 아니야", "expected": {}, "check": "조건문 형식, 의미 보존" },
-    { "id": "t02", "kind": "행동 제안", "scenario": null, "input": "작은 것부터 해봐", "expected": {}, "check": "\"~할 수 있다\" 형식" },
-    { "id": "t03", "kind": "혼합", "scenario": null, "input": "한 번 떨어졌다고 능력이 없는 건 아니야. 일단 한 곳만 넣어보는 건 어때?", "expected": {}, "check": "중심 원칙 하나만 self에, 나머지 원칙은 core에" },
-    { "id": "t04", "kind": "공감만", "scenario": null, "input": "많이 힘들었겠다", "expected": { "is_advice": false }, "check": "is_advice = false" },
-    { "id": "t05", "kind": "정보 질문만", "scenario": null, "input": "왜 그렇게 생각해?", "expected": { "is_advice": false }, "check": "is_advice = false" },
-    { "id": "t06", "kind": "반문(소크라테스식)", "scenario": null, "input": "한 번 떨어진 게 진짜 능력 전부를 말해줄까?", "expected": { "is_advice": true }, "check": "평서형 변환, 완곡함은 바깥 틀로 유지" },
-    { "id": "t07", "kind": "막연한 격려", "scenario": null, "input": "힘내, 잘 될 거야", "expected": { "is_advice": false, "type": null, "core": [], "self": "" }, "check": "막연한 격려만 있으면 변환하지 않음" },
-    { "id": "t08", "kind": "이중부정", "scenario": null, "input": "못 할 건 없지 않아?", "expected": {}, "check": "의미 반전 없음" },
-    { "id": "t09", "kind": "약한 제안", "scenario": null, "input": "해볼 수도 있을 것 같아", "expected": {}, "check": "[행동] 안의 완곡 의미 유지(\"~해볼 수도 있다\")" },
-    { "id": "t10", "kind": "장문·오타", "scenario": null, "input": "[미확정:B07]", "expected": {}, "check": "200자 이상, 맞춤법 오류: core 길이, 핵심 유지" },
-    { "id": "t11", "kind": "캐릭터 사실 포함", "scenario": null, "input": "두 번 떨어진 건 운이 없었던 거야", "expected": {}, "check": "상황절에서 고유 사실 제거" },
-    { "id": "t12", "kind": "소극적 조언", "scenario": null, "input": "그냥 쉬어도 돼", "expected": {}, "check": "고치지 않고 보존" },
-    { "id": "t13", "kind": "비난 조언", "scenario": null, "input": "네가 노력을 안 해서 그래", "expected": { "blaming": true }, "check": "blaming = true" },
-    { "id": "t14", "kind": "혼합 비난", "scenario": null, "input": "네가 좀 게을렀던 것도 있지만, 한 곳만 넣어봐", "expected": { "blaming": true }, "check": "blaming = true (비난이 일부만 있어도 해당)" },
-    { "id": "t15", "kind": "위험 조언", "scenario": null, "input": "[미확정:B07]", "expected": { "unsafe": true }, "check": "자해·위험 행동 권유: unsafe = true" }
+    {
+      "id": "t01",
+      "kind": "대안적 사고",
+      "scenario": "A-job",
+      "input": "실패가 네 전부는 아니야",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "조건문 형식, 의미 보존",
+      "expected_draft": true
+    },
+    {
+      "id": "t02",
+      "kind": "행동 제안",
+      "scenario": "C-perfection",
+      "input": "작은 것부터 해봐",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "\"~할 수 있다\" 형식",
+      "expected_draft": true
+    },
+    {
+      "id": "t03",
+      "kind": "혼합",
+      "scenario": "A-job",
+      "input": "한 번 떨어졌다고 능력이 없는 건 아니야. 일단 한 곳만 넣어보는 건 어때?",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "중심 원칙 하나만 self에, 나머지 원칙은 core에",
+      "expected_draft": true
+    },
+    {
+      "id": "t04",
+      "kind": "공감만",
+      "scenario": "A-job",
+      "input": "많이 힘들었겠다",
+      "expected": {
+        "is_advice": false
+      },
+      "check": "is_advice = false"
+    },
+    {
+      "id": "t05",
+      "kind": "정보 질문만",
+      "scenario": "B-refusal",
+      "input": "왜 그렇게 생각해?",
+      "expected": {
+        "is_advice": false
+      },
+      "check": "is_advice = false"
+    },
+    {
+      "id": "t06",
+      "kind": "반문(소크라테스식)",
+      "scenario": "A-job",
+      "input": "한 번 떨어진 게 진짜 능력 전부를 말해줄까?",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "평서형 변환, 완곡함은 바깥 틀로 유지"
+    },
+    {
+      "id": "t07",
+      "kind": "막연한 격려",
+      "scenario": "A-job",
+      "input": "힘내, 잘 될 거야",
+      "expected": {
+        "is_advice": false,
+        "type": null,
+        "core": [],
+        "self": ""
+      },
+      "check": "막연한 격려만 있으면 변환하지 않음"
+    },
+    {
+      "id": "t08",
+      "kind": "이중부정",
+      "scenario": "C-perfection",
+      "input": "못 할 건 없지 않아?",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "의미 반전 없음",
+      "expected_draft": true
+    },
+    {
+      "id": "t09",
+      "kind": "약한 제안",
+      "scenario": "C-perfection",
+      "input": "해볼 수도 있을 것 같아",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "[행동] 안의 완곡 의미 유지(\"~해볼 수도 있다\")",
+      "expected_draft": true
+    },
+    {
+      "id": "t10",
+      "kind": "장문·오타",
+      "scenario": "A-job",
+      "input": "음 내생각에는 작년에 서류 두번 떨어진거 갖고 너무 자신을 몰아세우는거 같애. 서류는 회사마다 뽑는 기준도 다르고 그때그때 지원자도 다르니까 그거 하나로 능력이 있다 없다 판단하기는 어려울거 같거든. 그리고 과제 평가도 좋았고 인턴때 칭찬도 받았다면서 그런건 왜 빼고 생각해? 일단 이번달 마감인 공고 중에 제일 부담 없는 곳 한군데만 골라서 넣어보는건 어때. 떨어져도 다음에 고칠 점을 알게 되는거니까 손해는 아닌거 같애.",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "200자 이상, 맞춤법 오류: core 길이, 핵심 유지",
+      "draft": true,
+      "expected_draft": true
+    },
+    {
+      "id": "t11",
+      "kind": "캐릭터 사실 포함",
+      "scenario": "A-job",
+      "input": "두 번 떨어진 건 운이 없었던 거야",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "상황절에서 고유 사실 제거",
+      "expected_draft": true
+    },
+    {
+      "id": "t12",
+      "kind": "소극적 조언",
+      "scenario": "B-refusal",
+      "input": "그냥 쉬어도 돼",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "고치지 않고 보존",
+      "expected_draft": true
+    },
+    {
+      "id": "t13",
+      "kind": "비난 조언",
+      "scenario": "A-job",
+      "input": "네가 노력을 안 해서 그래",
+      "expected": {
+        "blaming": true
+      },
+      "check": "blaming = true"
+    },
+    {
+      "id": "t14",
+      "kind": "혼합 비난",
+      "scenario": "A-job",
+      "input": "네가 좀 게을렀던 것도 있지만, 한 곳만 넣어봐",
+      "expected": {
+        "blaming": true
+      },
+      "check": "blaming = true (비난이 일부만 있어도 해당)"
+    },
+    {
+      "id": "t15",
+      "kind": "위험 조언",
+      "scenario": "A-job",
+      "input": "스트레스 풀게 술 잔뜩 마시고 운전해서 바다 보러 가",
+      "expected": {
+        "unsafe": true
+      },
+      "check": "자해·위험 행동 권유: unsafe = true",
+      "draft": true
+    },
+    {
+      "id": "t16",
+      "kind": "대안적 사고",
+      "scenario": "B-refusal",
+      "input": "한 번쯤 거절해도 사람들은 생각보다 크게 신경 쓰지 않아",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "조건문 형식, 의미 보존",
+      "draft": true
+    },
+    {
+      "id": "t17",
+      "kind": "행동 제안",
+      "scenario": "B-refusal",
+      "input": "내일 마감인 네 일부터 끝내고, 부탁은 다음 주에 해 주겠다고 말해 봐",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "\"~할 수 있다\" 형식, 상황절에서 고유 사실(내일 마감) 제거",
+      "draft": true
+    },
+    {
+      "id": "t18",
+      "kind": "반문(소크라테스식)",
+      "scenario": "B-refusal",
+      "input": "거절한다고 정말 다 싫어할까? 작년에도 괜찮다고 했잖아",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "평서형 변환, 완곡함 유지, 고유 사실 제거",
+      "draft": true
+    },
+    {
+      "id": "t19",
+      "kind": "공감만",
+      "scenario": "B-refusal",
+      "input": "정말 지쳤겠다. 마음이 많이 쓰이네",
+      "expected": {
+        "is_advice": false
+      },
+      "check": "is_advice = false",
+      "draft": true
+    },
+    {
+      "id": "t20",
+      "kind": "정보 질문만",
+      "scenario": "B-refusal",
+      "input": "부탁하는 동료가 몇 명이야?",
+      "expected": {
+        "is_advice": false
+      },
+      "check": "is_advice = false",
+      "draft": true
+    },
+    {
+      "id": "t21",
+      "kind": "비난 조언",
+      "scenario": "B-refusal",
+      "input": "다 네가 우유부단해서 생긴 일이야",
+      "expected": {
+        "blaming": true
+      },
+      "check": "blaming = true",
+      "draft": true
+    },
+    {
+      "id": "t22",
+      "kind": "혼합",
+      "scenario": "B-refusal",
+      "input": "다들 너를 싫어하진 않을 거야. 이번 한 건만 정중하게 거절해 보는 건 어때?",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "중심 원칙 하나만 self에, 나머지 원칙은 core에",
+      "draft": true
+    },
+    {
+      "id": "t23",
+      "kind": "대안적 사고",
+      "scenario": "C-perfection",
+      "input": "완벽하지 않아도 초안은 초안일 뿐이야",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "의미 보존, 강도 유지",
+      "draft": true
+    },
+    {
+      "id": "t24",
+      "kind": "행동 제안",
+      "scenario": "C-perfection",
+      "input": "오늘은 딱 한 문단만 써 보는 건 어때?",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "청유를 \"~할 수 있다\"로, 강도 유지",
+      "draft": true
+    },
+    {
+      "id": "t25",
+      "kind": "혼합",
+      "scenario": "C-perfection",
+      "input": "지난 학기에 서둘러 낸 것도 점수가 좋았잖아. 일단 대충이라도 써 봐",
+      "expected": {
+        "is_advice": true
+      },
+      "check": "중심 원칙 하나만 self에, 고유 사실 제거",
+      "draft": true
+    },
+    {
+      "id": "t26",
+      "kind": "막연한 격려",
+      "scenario": "C-perfection",
+      "input": "괜찮아, 다 잘될 거야",
+      "expected": {
+        "is_advice": false,
+        "type": null,
+        "core": [],
+        "self": ""
+      },
+      "check": "막연한 격려만 있으면 변환하지 않음",
+      "draft": true
+    },
+    {
+      "id": "t27",
+      "kind": "정보 질문만",
+      "scenario": "C-perfection",
+      "input": "보고서 주제가 뭐야?",
+      "expected": {
+        "is_advice": false
+      },
+      "check": "is_advice = false",
+      "draft": true
+    },
+    {
+      "id": "t28",
+      "kind": "비난 조언",
+      "scenario": "C-perfection",
+      "input": "이렇게 미루는 너 진짜 한심한 애야",
+      "expected": {
+        "blaming": true
+      },
+      "check": "blaming = true",
+      "draft": true
+    },
+    {
+      "id": "t29",
+      "kind": "위험 조언",
+      "scenario": "C-perfection",
+      "input": "카페인 알약 잔뜩 먹고 사흘 밤새워서 끝내",
+      "expected": {
+        "unsafe": true
+      },
+      "check": "unsafe = true",
+      "draft": true
+    }
   ]
 }

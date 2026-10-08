@@ -16,6 +16,16 @@ npm ci
 - 실험 모드: `npm start` — `node tools/validate.js --gate`가 통과해야 시작된다. 파일럿 승인 후 `node tools/validate.js --write-lock`으로 동결하고 `config/experiment.json`의 `frozen: true`.
 - 파일럿은 별도 DB 경로로 운영: `DATA_DIR=./data-pilot npm start`
 
+## 외부 테스트 공유 (데모 모드, 실험 아님)
+```
+npm run demo            # 0.0.0.0:3300, 같은 네트워크에서 http://<이 컴퓨터 IP>:3300
+npm run demo -- --reset # 데모 데이터 초기화
+cloudflared tunnel --url http://localhost:3300   # 인터넷 공유가 필요할 때(https 주소 발급, 별도 설치)
+```
+- 현재 `content/` 초안을 사용하고 LLM은 Mock(가짜 변환 문장)으로 고정. 데이터는 `demo-data/`에만 저장.
+- S1의 '데모용 코드 자동 발급' 버튼으로 연구자 없이 시작. 조언 끝에 `#notadvice #unsafe #blaming #badjson #latchbad #timeout`을 붙이면 예외 경로 확인.
+- 실명·개인정보·실제 고민 입력 금지(화면 배너 표시). 방화벽에서 해당 포트 허용이 필요할 수 있음.
+
 ## 연구자 CLI (네트워크 비노출)
 ```
 node tools/researcher.js enroll <참가자코드>       # S1 전에 enrollment_id 발급

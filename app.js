@@ -22,9 +22,15 @@ function createApp(ctx) {
       'Cache-Control': 'no-store',
       'X-Frame-Options': 'DENY',
     });
-    if (!allowedHosts().includes(req.headers.host)) return res.status(403).json({ error: 'HOST_FORBIDDEN' });
     const origin = req.headers.origin;
-    if (origin && !allowedHosts().some((h) => origin === `http://${h}`)) return res.status(403).json({ error: 'ORIGIN_FORBIDDEN' });
+    if (ctx.config.demo) {
+      // 데모: LAN IP·터널 주소 등 임의 Host 허용, 단 Origin은 같은 Host만(교차 사이트 요청 차단)
+      if (!req.headers.host) return res.status(403).json({ error: 'HOST_FORBIDDEN' });
+      if (origin) { let oh = null; try { oh = new URL(origin).host; } catch { /* 잘못된 Origin */ } if (oh !== req.headers.host) return res.status(403).json({ error: 'ORIGIN_FORBIDDEN' }); }
+    } else {
+      if (!allowedHosts().includes(req.headers.host)) return res.status(403).json({ error: 'HOST_FORBIDDEN' });
+      if (origin && !allowedHosts().some((h) => origin === `http://${h}`)) return res.status(403).json({ error: 'ORIGIN_FORBIDDEN' });
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.path.startsWith('/api/')) {
       if (req.get('x-requested-with') !== 'research-app' || !req.is('application/json')) return res.status(403).json({ error: 'CSRF_REJECTED' });
     }

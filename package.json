@@ -12,7 +12,8 @@
     "start": "node server.js",
     "validate": "node tools/validate.js",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "demo": "node tools/demo.js"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

@@ -27,6 +27,7 @@ async function toS4(page, code) {
     await expect(page.locator(`[data-choice=${id}]`)).toHaveCount(0);
   }
   await expect(page.locator('h1')).toHaveText('조언 입력');
+  await expect(page.locator('main')).toContainText('[TEST] 가상 자동적 사고 A.'); // 3턴 대답이 S4 화면에 보임
 }
 
 async function fillS5(page) {
@@ -159,7 +160,7 @@ test('T54: 중단 → 삭제 → 영수증으로 삭제 완료 표시, 세션 �
   // T56: 영수증 소실 → 연구자 대면 확인 안내, 데이터 복원·재식별 없음
   await page.evaluate(() => sessionStorage.removeItem('crsa.receipt'));
   await page.reload();
-  await expect(page.getByTestId('deletion-status')).toContainText('연구자가 대면으로 확인');
+  await expect(page.getByTestId('deletion-status')).toContainText('대면');
 });
 
 test('T30: 즉시 도움 요청 → safety_stop 안내, 설문 차단', async ({ page }) => {

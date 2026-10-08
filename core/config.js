@@ -30,6 +30,9 @@ function loadConfig(opts = {}) {
     storagePaths: (experiment.storage_paths || []).map((p) => path.resolve(storageRoot, p)),
     llmProvider: opts.llmProvider || process.env.LLM_PROVIDER || experiment.llm_provider || 'gemini',
     port: Number(opts.port ?? process.env.PORT ?? 3000),
+    // 데모 모드(외부 테스트 공유용, 실험 아님): 별도 데이터 폴더·Mock LLM 전용. 실험 모드는 127.0.0.1 고정
+    demo: opts.demo ?? process.env.DEMO_MODE === '1',
+    host: opts.host || process.env.HOST || '127.0.0.1',
     llmTimeoutMs: Number(opts.llmTimeoutMs ?? experiment.llm_timeout_ms ?? 10000),
     tokenTtlMs: (experiment.token_ttl_hours ?? 4) * 3600 * 1000,
     receiptTtlMs: (experiment.receipt_ttl_hours ?? 24) * 3600 * 1000,

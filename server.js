@@ -18,9 +18,15 @@ async function start(opts = {}) {
     const errs = verifyLock(opts.lockRoot || ROOT);
     if (errs.length) throw Object.assign(new Error(`frozen.lock 검증 실패:\n${errs.join('\n')}`), { code: 'FROZEN_MISMATCH', errs });
   }
+  // 외부 바인딩은 데모 모드에서만 (§10.4: 실험 서버는 127.0.0.1 전용)
+  if (ctx.config.host !== '127.0.0.1' && !ctx.config.demo) throw Object.assign(new Error('127.0.0.1 이외 바인딩은 데모 모드(DEMO_MODE=1)에서만 허용'), { code: 'HOST_NOT_ALLOWED' });
+  if (ctx.config.demo) {
+    if (ctx.config.experiment.frozen) throw Object.assign(new Error('동결(실험) 설정으로는 데모 모드를 실행할 수 없습니다'), { code: 'DEMO_NOT_ALLOWED' });
+    if (ctx.provider.id !== 'mock' && !opts.demoAllowRealLlm) throw Object.assign(new Error('데모 모드는 Mock LLM 전용입니다(LLM_PROVIDER=mock)'), { code: 'DEMO_NOT_ALLOWED' });
+  }
   const gate = contentGate(ctx);
   if (gate.length) {
-    if (ctx.config.experiment.frozen || !dev) {
+    if (ctx.config.experiment.frozen || !(dev || ctx.config.demo)) {
       throw Object.assign(new Error(`실험 투입 게이트 미통과 (개발 실행은 RESEARCH_DEV_MODE=1):\n- ${gate.join('\n- ')}`), { code: 'GATE_FAILED', gate });
     }
     ctx.log(`[개발 모드] 게이트 미통과 ${gate.length}건 — 실제 참가자에게 사용 금지`);
@@ -36,7 +42,7 @@ async function start(opts = {}) {
 
   const app = createApp(ctx);
   return new Promise((resolve, reject) => {
-    const server = app.listen(ctx.config.port, '127.0.0.1', () => {
+    const server = app.listen(ctx.config.port, ctx.config.host, () => {
       ctx.boundPort = server.address().port;
       resolve({ ctx, server, port: ctx.boundPort, close: () => new Promise((r) => { clearInterval(sweep); server.close(() => r()); }) });
     });

@@ -115,7 +115,10 @@ function view(ctx, s) {
       }
       case 'S4': {
         const sc = ctx.scenarios.get(s.character_id);
-        context = { strings: str.S4, character: ctx.scenarios.publicView(s.character_id), closing: sc.dialogue.closing, limits: { min: 1, max: 2000 } };
+        // 이미 공개된 장면(소개·선택한 질문·대답, 3턴 자동적 사고 포함) + 마지막 말
+        const done = ctx.db.prepare('SELECT turn, choice_text, reply_text FROM dialogue WHERE session_id=? ORDER BY turn').all(sid);
+        context = { strings: str.S4, character: ctx.scenarios.publicView(s.character_id), intro: sc.dialogue.intro,
+          history: done.map((d) => ({ turn: d.turn, choice_text: d.choice_text, reply: d.reply_text })), closing: sc.dialogue.closing, limits: { min: 1, max: 2000 } };
         break;
       }
       case 'S5': context = { strings: str.S5 }; break;

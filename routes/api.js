@@ -32,7 +32,19 @@ function createApiRouter(ctx) {
   const queueDeletion = (sid) => setImmediate(() => ctx.track(Promise.resolve().then(() => D.runDeletionJob(ctx, sid)).catch((e) => ctx.log('deletion job interrupted', e.code || e.message))));
 
   // 세션 전 공개 문구: S1 동의 고지, S11 종료·상담 창구 (B24)
-  r.get('/public/ui', (req, res) => res.json({ common: ctx.strings.common, S1: ctx.strings.S1, S11: ctx.strings.S11, consent_version: ctx.config.experiment.consent_version }));
+  r.get('/public/ui', (req, res) => res.json({ common: ctx.strings.common, S1: ctx.strings.S1, S11: ctx.strings.S11, consent_version: ctx.config.experiment.consent_version, demo: !!ctx.config.demo }));
+
+  // 데모 모드 전용: 테스터가 연구자 없이 시작할 수 있도록 데모 등록 발급 (실험 모드에는 경로 자체가 없음)
+  if (ctx.config.demo) {
+    const demoHits = [];
+    r.post('/demo/enroll', (req, res) => {
+      const t = Date.now();
+      while (demoHits.length && demoHits[0] < t - 60000) demoHits.shift();
+      if (demoHits.length >= 60) throw new ApiError(429, 'RATE_LIMITED');
+      demoHits.push(t);
+      res.status(201).json(require('../core/researcher').enroll(ctx, `DEMO-${require('crypto').randomBytes(4).toString('hex')}`));
+    });
+  }
 
   r.get('/scenarios', (req, res) => res.json({ scenarios: ctx.scenarios.ids().map(ctx.scenarios.publicView) }));
   r.get('/scenarios/:sid', (req, res) => {

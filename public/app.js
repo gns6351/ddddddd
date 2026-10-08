@@ -202,6 +202,10 @@
         el('label', {}, transfer, ' ', S.transfer_consent_label),
         el('p', { class: 'notice', text: S.transfer_required })),
       el('section', {}, el('strong', { text: S.researcher_section }),
+        pub.demo ? el('button', { type: 'button', 'data-testid': 'demo-enroll', text: '데모용 코드 자동 발급', onclick: async () => {
+          const r = await api('POST', '/api/demo/enroll', {}, { auth: false });
+          if (r.status === 201) { code.value = r.body.participant_code; enroll.value = r.body.enrollment_id; }
+        } }) : null,
         el('label', { text: S.participant_code_label }), code,
         el('label', { text: S.enrollment_id_label }), enroll),
       msg,
@@ -274,7 +278,9 @@
       }
       case 'S4': {
         const ts = v.transform_state || {};
-        const head = el('section', {}, charHeader(c.character), el('div', { class: 'bubble', text: c.closing }));
+        const head = el('section', {}, charHeader(c.character), el('div', { class: 'bubble', text: c.intro }),
+          ...c.history.flatMap((hh) => [el('div', { class: 'bubble me', text: hh.choice_text }), el('div', { class: 'bubble', text: hh.reply })]),
+          el('div', { class: 'bubble', 'data-testid': 'closing', text: c.closing }));
         if (ts.pending) {
           $app.replaceChildren(el('h1', { text: S.title }), head, el('p', { class: 'notice', text: S.pending }));
           pollTimer = setTimeout(refresh, 1000);
@@ -453,6 +459,7 @@
     if (m) { store.clear(); store.set(K.sid, m[1]); store.set(K.secret, m[2]); history.replaceState(null, '', '/'); }
     const r = await api('GET', '/api/public/ui', undefined, { auth: false });
     pub = r.body;
+    if (pub.demo) document.body.prepend(el('div', { class: 'demo-banner', 'data-testid': 'demo-banner', text: '데모 모드 — 실제 연구가 아닙니다. 실명·개인정보·실제 고민을 입력하지 마세요. 변환 문장은 가짜(Mock) 응답입니다.' }));
     await refresh();
   }
   boot();
