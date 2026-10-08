@@ -22,5 +22,11 @@
 - 테스트(실행함): Vitest 6 files / 57 tests 통과 — 추가로 T07(LLM) T09 T25 T29 T32(DB) T47, 개인 기록 비전송·프롬프트 치환 주입 방지, 판정기 단위, Gemini 요청 형식(가짜 클라이언트 주입).
 - **미검증**: 실제 Gemini API 호출(모델 ID B04 미확정, 이 환경에 GEMINI_API_KEY 없음). 실제 모델의 responseJsonSchema·thinkingLevel 지원 여부는 모델 확정 후 pretest로 확인 필요.
 
+## Phase 5 연구 데이터 — 완료
+- `tools/export.js`: sessions.csv(빈칸=null, NA=비해당, true/false), reexam/selfapp/s8/error/core/advice 시트(무작위 순서·블라인드 ID 재사용), sheet_denominators.csv, coding_key.csv, llm_log.csv, timeline_<코드>.txt. 삭제 작업 진행 중 차단.
+- `tools/rulebased.js`(치환표 v0-provisional, B16), `tools/analyze.js`(--reliability: 가중 κ·κ·일치율·PABAK·AC1·유형별 일치·불일치 목록 / 전체: RQ1~3·ops·exclusions·report.md·fig_prepost.svg + analysis_runs·stats·멤버/출력 매니페스트).
+- 분모: §10.9 그대로(n_ok = completed & ok, 자기적용 ok 완료만, q9×q2/q10×q11 표시·응답 세션만, RQ3 ok 변환 + 전체 입력 차수 성공률 병기).
+- 테스트(실행함): Vitest 7 files / 64 tests 통과 — 추가 T23 T31 T32(CSV) T33(CSV) T34 T36 T38 T39 T46 T49, κ/AC1 수치 검증.
+
 ## 다음
-- Phase 5: export.js(시트·키·llm_log·timeline), rulebased.js, analyze.js(신뢰도·RQ 통계·analysis_runs).
+- Phase 6: T01~T56 전수 매핑·누락분(T22 동결, T45 게이트, T48 인터뷰 등) 실행, 결과표 작성.

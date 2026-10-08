@@ -37,3 +37,4 @@
 | B28 | 충돌 | §5 “시간 초과 → 재시도 1회”·T37 vs T44 “공급자 무응답 → unknown, 자동 재전송 0” | 앱 10초 제한 초과(TIMEOUT)는 failed로 기록 후 try2 허용. 응답 없이 연결이 끊긴 네트워크 장애는 unknown으로 기록하고 재송신하지 않음(fallback/safety_hold). 서버 재시작 시 reserved/dispatched는 unknown |
 | B29 | 정보 | DDL `experience_checks` CHECK는 SQLite의 NULL 평가 규칙상 has_experience=1·relevance NULL 행을 거부하지 못함 | 정식 DDL은 수정하지 않고 서비스 계층(422)에서 보증. 테스트로 확인 |
 | B30 | 결정 | advice_validity 값 매핑(명세는 fallback=unknown만 명시) | ok=valid, not_advice=invalid, unsafe/blaming/safety_hold/fallback=unknown |
+| B31 | 결정 | 조언 질(advice_quality) 코딩 시트 위치(명세 내보내기 표에 없음) | 별도 `advice_sheet.csv`(final_advice 기준) |
