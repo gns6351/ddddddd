@@ -34,3 +34,6 @@
 | B25 | 결정 | S2 캐릭터 제시 순서(고정/무작위) | config.scenarios 순서 고정 |
 | B26 | 외부 | 인터뷰 메모 틀·themes.csv·코더 시트 열 형식의 정식 양식 | export가 생성하는 열 형식을 임시 표준으로 사용(`docs/coding-format.md`) |
 | B27 | 외부 | 디스크 암호화/SQLCipher 적용 (§9) | 운영 절차 항목. 코드에서 미구현 |
+| B28 | 충돌 | §5 “시간 초과 → 재시도 1회”·T37 vs T44 “공급자 무응답 → unknown, 자동 재전송 0” | 앱 10초 제한 초과(TIMEOUT)는 failed로 기록 후 try2 허용. 응답 없이 연결이 끊긴 네트워크 장애는 unknown으로 기록하고 재송신하지 않음(fallback/safety_hold). 서버 재시작 시 reserved/dispatched는 unknown |
+| B29 | 정보 | DDL `experience_checks` CHECK는 SQLite의 NULL 평가 규칙상 has_experience=1·relevance NULL 행을 거부하지 못함 | 정식 DDL은 수정하지 않고 서비스 계층(422)에서 보증. 테스트로 확인 |
+| B30 | 결정 | advice_validity 값 매핑(명세는 fallback=unknown만 명시) | ok=valid, not_advice=invalid, unsafe/blaming/safety_hold/fallback=unknown |

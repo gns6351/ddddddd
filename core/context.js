@@ -34,7 +34,7 @@ function createContext(opts = {}) {
     log: opts.log || ((...a) => console.log(...a)),
     now: opts.now || (() => new Date()),
   };
-  ctx.track = (p) => { ctx.jobs.add(p); p.finally(() => ctx.jobs.delete(p)); return p; };
+  ctx.track = (p) => { ctx.jobs.add(p); p.finally(() => ctx.jobs.delete(p)).catch(() => {}); return p; };
   ctx.idle = async () => { while (ctx.jobs.size) await Promise.allSettled([...ctx.jobs]); };
   return ctx;
 }

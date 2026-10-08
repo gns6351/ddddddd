@@ -10,7 +10,7 @@ const { resumeDeletionJobs, sweepReceipts } = require('./core/deletionService');
  * 시작 순서: 동결 검증(frozen) → 콘텐츠 게이트 → 재시작 복구(변환·삭제) → 127.0.0.1 바인딩
  * opts.dev=true(또는 RESEARCH_DEV_MODE=1)일 때만 게이트 미통과 상태로 개발 실행 허용.
  */
-function start(opts = {}) {
+async function start(opts = {}) {
   if (!opts.noEnv) loadEnvFile();
   const ctx = createContext(opts);
   const dev = opts.dev ?? process.env.RESEARCH_DEV_MODE === '1';

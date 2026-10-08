@@ -29,7 +29,7 @@ function createApiRouter(ctx) {
   const r = express.Router();
   const send = (res, out) => res.status(out.http || 200).json(out.body ?? out);
   const auth = (req) => S.authenticate(ctx, req.params.id, req.get('authorization'));
-  const queueDeletion = (sid) => setImmediate(() => ctx.track(Promise.resolve().then(() => D.runDeletionJob(ctx, sid))));
+  const queueDeletion = (sid) => setImmediate(() => ctx.track(Promise.resolve().then(() => D.runDeletionJob(ctx, sid)).catch((e) => ctx.log('deletion job interrupted', e.code || e.message))));
 
   // 세션 전 공개 문구: S1 동의 고지, S11 종료·상담 창구 (B24)
   r.get('/public/ui', (req, res) => res.json({ common: ctx.strings.common, S1: ctx.strings.S1, S11: ctx.strings.S11, consent_version: ctx.config.experiment.consent_version }));
