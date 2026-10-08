@@ -173,3 +173,14 @@ test('T30: 즉시 도움 요청 → safety_stop 안내, 설문 차단', async ({
   const s = await sql("SELECT status FROM sessions WHERE participant_code='E2E-HELP'");
   expect(s[0].status).toBe('safety_stop');
 });
+
+test('S1 오류 안내: 미발급 등록 ID는 등록 오류로 표시(단계 충돌 문구 아님)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('input[name=consent]').check();
+  await page.locator('input[name=transfer_consent]').check();
+  await page.locator('input[name=participant_code]').fill('NO-ENROLL');
+  await page.locator('input[name=enrollment_id]').fill('E-wrong');
+  await page.getByRole('button', { name: '시작' }).click();
+  await expect(page.locator('p.err')).toContainText('등록 ID가 올바르지 않습니다');
+  await expect(page.locator('p.err')).toContainText('ENROLLMENT_INVALID');
+});

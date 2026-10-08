@@ -125,11 +125,23 @@
   const charHeader = (c) => el('div', { class: 'char' }, c.image_url ? el('img', { src: c.image_url, alt: '' }) : null, el('strong', { text: c.name }));
 
   /* ---------- 서버 응답 처리 ---------- */
+  /** 오류 유형별 안내 + 진단용 코드(연구자 확인용) */
+  function errorText(res) {
+    const C = pub.common;
+    const code = (res.body && res.body.error) || res.status;
+    const map = {
+      ENROLLMENT_INVALID: C.enrollment_invalid, ENROLLMENT_USED: C.enrollment_used, NETWORK: C.network_error,
+      HOST_FORBIDDEN: C.access_forbidden, ORIGIN_FORBIDDEN: C.access_forbidden, CSRF_REJECTED: C.access_forbidden,
+    };
+    const text = map[code] || (res.status === 409 ? C.conflict : res.status >= 500 ? C.server_error : C.server_error);
+    return `${text} (${code})`;
+  }
+
   async function handle(res, { onOk } = {}) {
     if (res.status === 422) { showErrors(res.body.fields); return false; }
     if (res.status === 401) { return endFromRevoked(res.body); }
-    if (res.status === 409) { alert(pub.common.conflict); await refresh(); return false; }
-    if (res.status === 0 || res.status >= 500) { alert(pub.common.conflict); return false; }
+    if (res.status === 409) { alert(errorText(res)); await refresh(); return false; }
+    if (res.status === 0 || res.status >= 400) { alert(errorText(res)); return false; }
     if (onOk) await onOk(res.body);
     // 종료 전이 응답(토큰 폐기 동반)의 status를 먼저 기억해 종료 안내 유형을 정확히 표시
     if (res.body && res.body.status && res.body.status !== 'active') { store.set(K.ended, res.body.status); view = { ...view, status: res.body.status }; }
@@ -147,7 +159,7 @@
     }
     const r = await api('GET', `/api/sessions/${encodeURIComponent(sid)}`);
     if (r.status === 401) return endFromRevoked(r.body);
-    if (r.status !== 200) { $app.replaceChildren(el('p', { class: 'err', text: pub.common.conflict })); return; }
+    if (r.status !== 200) { $app.replaceChildren(el('p', { class: 'err', text: errorText(r) })); return; }
     view = r.body;
     render();
   }
@@ -223,8 +235,8 @@
           store.set(K.sid, r.body.session_id); store.set(K.secret, body.resume_secret); store.del(K.create); store.del(K.ended);
           return refresh();
         }
-        if (r.status === 422) msg.textContent = S.transfer_required;
-        else msg.textContent = pub.common.conflict;
+        if (r.status === 422) msg.textContent = r.body.error === 'CONSENT_REQUIRED' ? S.transfer_required : `${pub.common.required_notice} (${(r.body.fields || []).map((f) => f.field).join(', ')})`;
+        else msg.textContent = errorText(r);
         if (r.status === 409 || r.status === 403) store.del(K.create);
       }),
     );
