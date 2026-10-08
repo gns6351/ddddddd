@@ -141,7 +141,7 @@
     clearTimeout(pollTimer);
     const sid = store.get(K.sid);
     if (!sid) {
-      if (store.get(K.receipt)) return renderDeletionStatus();
+      if (store.get(K.receipt) || store.get(K.ended) === 'deletion_pending') return renderDeletionStatus(); // 영수증 소실 시 연구자 절차 안내
       if (store.get(K.ended)) return renderEnded(store.get(K.ended));
       return renderS1();
     }
@@ -286,7 +286,8 @@
           submitBtn(null, async () => {
             const advice = f.input.value;
             if (!advice.trim()) return showErrors([{ field: 'advice', min: 1, max: 2000, length: 0 }]);
-            const r = await post('/transform', { advice, request_id: reqId(`S4-${ts.attempt}`, advice) });
+            // 새로 만들 입력 차수 기준 키: 재입력에서 1차와 같은 문장을 내도 별도 request_id
+            const r = await post('/transform', { advice, request_id: reqId(`S4-${(ts.attempt || 0) + 1}`, advice) });
             await handle(r);
           }));
         break;

@@ -28,5 +28,11 @@
 - 분모: §10.9 그대로(n_ok = completed & ok, 자기적용 ok 완료만, q9×q2/q10×q11 표시·응답 세션만, RQ3 ok 변환 + 전체 입력 차수 성공률 병기).
 - 테스트(실행함): Vitest 7 files / 64 tests 통과 — 추가 T23 T31 T32(CSV) T33(CSV) T34 T36 T38 T39 T46 T49, κ/AC1 수치 검증.
 
-## 다음
-- Phase 6: T01~T56 전수 매핑·누락분(T22 동결, T45 게이트, T48 인터뷰 등) 실행, 결과표 작성.
+## Phase 6 통합 검증 — 완료(외부 승인 항목 제외)
+- 보강: 운영 승인 체크리스트 게이트(`config.approvals`, B32)·사전 점검 게이트(현재 프롬프트 해시·모델 일치 + 자동 지표 합격), 인터뷰 프로토콜(`content/interview/protocol.json`, `researcher.js interview`), 모집 규칙 CLI, 2차 try 예약 전 상태 확인, 영수증 소실 안내 화면.
+- 테스트(실행함): Vitest 8 files / 73 tests 통과, Playwright 5/5 통과. 매핑은 `docs/test-matrix.md` — 통과 52항목, 부분 4항목(T45·T46·T48·T50: 시스템 측 로직만), 미실행: 실제 Gemini 호출·실제 콘텐츠 E2E·기관 승인·파일럿.
+- CLI 실행 확인: enroll / recruitment / export / analyze / analyze --reliability / validate --gate(실제 콘텐츠로 exit 1 = 의도된 차단).
+
+## 남은 일(외부 입력 필요)
+- B01~B08·B20·B32 실제 콘텐츠·승인 입력 → `node tools/validate.js --gate` 통과 → 실제 모델로 `tools/pretest.js` → 파일럿 → `--write-lock` 동결.
+- [결정] 항목(B09~B19, B21, B24, B28, B30, B31) 연구자 확정. 확정 결과가 기본값과 다르면 해당 코드·테스트 수정 필요.

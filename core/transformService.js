@@ -120,6 +120,13 @@ function submitTransform(ctx, session, body) {
   return { http: 202, body: { status: 'pending', request_id: b.request_id } };
 }
 
+/** try 예약·전송 직전 상태: active·S4·pending·취소 플래그 없음 */
+function liveState(ctx, sid, attempt) {
+  const s = getSession(ctx, sid);
+  const tr = ctx.db.prepare('SELECT processing_state, cancel_requested FROM transform_requests WHERE session_id=? AND attempt=?').get(sid, attempt);
+  return !!(s && s.status === 'active' && s.current_step === 'S4' && tr && tr.processing_state === 'pending' && !tr.cancel_requested);
+}
+
 /** ④~⑧ try 루프 */
 async function runTransform(ctx, sid, attempt) {
   const tr0 = ctx.db.prepare('SELECT * FROM transform_requests WHERE session_id=? AND attempt=?').get(sid, attempt);
@@ -131,18 +138,20 @@ async function runTransform(ctx, sid, attempt) {
   let decided = null;
 
   for (let tryNo = 1; tryNo <= 2; tryNo++) {
-    // ④ reserved 영속 기록 (입력 원문은 transform_requests에만; 여기는 참조만)
+    // ④ reserved 영속 기록 (입력 원문은 transform_requests에만; 여기는 참조만). 철회·종료 뒤에는 새 try를 예약하지 않음
     const inputRef = { advice_ref: { attempt, request_id: tr0.request_id }, character: session0.character_id, prompt: p.ref };
-    ctx.db.prepare(`INSERT INTO llm_calls(session_id,attempt,try_no,request_id,status,input_json,prompt_id,prompt_hash,model_id,ts)
-      VALUES (?,?,?,?, 'reserved', ?,?,?,?,?)`).run(sid, attempt, tryNo, tr0.request_id, JSON.stringify(inputRef), p.ref, p.hash, ctx.provider.model, now(ctx));
+    const reservedOk = tx(ctx.db, () => {
+      if (!liveState(ctx, sid, attempt)) return false;
+      ctx.db.prepare(`INSERT INTO llm_calls(session_id,attempt,try_no,request_id,status,input_json,prompt_id,prompt_hash,model_id,ts)
+        VALUES (?,?,?,?, 'reserved', ?,?,?,?,?)`).run(sid, attempt, tryNo, tr0.request_id, JSON.stringify(inputRef), p.ref, p.hash, ctx.provider.model, now(ctx));
+      return true;
+    });
+    if (!reservedOk) return finalize(ctx, sid, attempt, { outcome: 'fallback', safety_source: 'none', api_calls: apiCalls });
 
     // ⑤ 직렬화 구역: 최신 상태 확인 후 dispatched 커밋, 그 직후 SDK 호출
     const ac = new AbortController();
     const go = tx(ctx.db, () => {
-      const s = getSession(ctx, sid);
-      const tr = ctx.db.prepare('SELECT processing_state, cancel_requested FROM transform_requests WHERE session_id=? AND attempt=?').get(sid, attempt);
-      const okState = s && s.status === 'active' && s.current_step === 'S4' && tr && tr.processing_state === 'pending' && !tr.cancel_requested;
-      if (!okState) {
+      if (!liveState(ctx, sid, attempt)) {
         ctx.db.prepare("UPDATE llm_calls SET status='cancelled', failure_code='STATE_CHANGED_BEFORE_DISPATCH' WHERE session_id=? AND attempt=? AND try_no=?").run(sid, attempt, tryNo);
         return false;
       }

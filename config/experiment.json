@@ -2,8 +2,14 @@
   "app_version": "3.4.0",
   "analysis_plan_version": "[미확정:B20]",
   "frozen": false,
-  "scenarios": ["A-job", "B-refusal", "C-perfection"],
-  "prompts": { "transform": "v2" },
+  "scenarios": [
+    "A-job",
+    "B-refusal",
+    "C-perfection"
+  ],
+  "prompts": {
+    "transform": "v2"
+  },
   "llm_provider": "gemini",
   "model": "[미확정:B04]",
   "model_checked_at": "[미확정:B04]",
@@ -12,6 +18,24 @@
   "llm_timeout_ms": 10000,
   "token_ttl_hours": 4,
   "receipt_ttl_hours": 24,
-  "safety": { "responder_id": "[미확정:B05]" },
-  "storage_paths": ["export", "coding", "interviews", "stats", "backups"]
+  "safety": {
+    "responder_id": "[미확정:B05]"
+  },
+  "storage_paths": [
+    "export",
+    "coding",
+    "interviews",
+    "stats",
+    "backups"
+  ],
+  "approvals": {
+    "_note": "§10.1 동의/운영 게이트(A07). 각 항목에 승인 문서 번호·일자 등 근거를 기록. 하나라도 미확정이면 서버 시작 차단",
+    "irb_decision": "[미확정:B32]",
+    "consent_forms_participation_transfer_recording": "[미확정:B32]",
+    "age_19_eligibility_procedure": "[미확정:B32]",
+    "llm_provider_country_retention_terms": "[미확정:B32]",
+    "safety_manual_contacts_drill": "[미확정:B32]",
+    "researcher_training": "[미확정:B32]",
+    "pretest_manual_review": "[미확정:B32]"
+  }
 }

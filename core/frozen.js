@@ -6,6 +6,21 @@ const { sha256hex, countPlaceholders, PLACEHOLDER } = require('./util');
 /** 동결 범위 (§6 고정, §10.1 동결): frozen.lock 자체는 제외 */
 const LOCK_SCOPE = ['content', 'schemas', 'public', 'routes', 'core', 'db', 'tools', 'config', 'server.js', 'app.js', 'package.json', 'package-lock.json'];
 const LOCK_FILE = 'frozen.lock';
+const APPROVALS = ['irb_decision', 'consent_forms_participation_transfer_recording', 'age_19_eligibility_procedure', 'llm_provider_country_retention_terms', 'safety_manual_contacts_drill', 'researcher_training', 'pretest_manual_review'];
+
+function pretestGate(ctx) {
+  const ver = ctx.config.experiment.prompts.transform;
+  const f = path.join(ctx.config.storageRoot, 'stats', `pretest_${ver}_summary.json`);
+  if (!fs.existsSync(f)) return ['pretest summary missing'];
+  let s;
+  try { s = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return ['pretest summary unreadable']; }
+  const errs = [];
+  if (s.prompt_hash !== ctx.transformPrompt.hash) errs.push('pretest prompt_hash mismatch (프롬프트 변경 후 재점검 필요)');
+  if (s.model !== ctx.config.experiment.model) errs.push('pretest model mismatch');
+  for (const [k, v] of Object.entries(s.gate_auto || {})) if (v !== true) errs.push(`pretest gate failed: ${k}`);
+  if (!s.gate_auto) errs.push('pretest gate missing');
+  return errs;
+}
 
 function listFiles(root, rel) {
   const p = path.join(root, rel);
@@ -68,7 +83,12 @@ function contentGate(ctx) {
   if (ctx.rules.empty || PLACEHOLDER.test(String(ctx.rules.version))) errs.push('safety rules empty or unversioned');
   if (ctx.transformPrompt.errors.length) errs.push(...ctx.transformPrompt.errors.map((e) => `prompt: ${e}`));
   if (ctx.config.llmProvider !== 'gemini') errs.push(`llm provider must be gemini (got ${ctx.config.llmProvider})`);
+  // 동의/운영 승인 체크리스트(A07, T45): 시스템이 대신 판정하지 않고 승인 근거 기록 여부만 확인
+  const ap = exp.approvals || {};
+  for (const k of APPROVALS) if (!ap[k] || PLACEHOLDER.test(String(ap[k]))) errs.push(`approval missing: ${k}`);
+  // 사전 점검 게이트(§10.1, §10.10): 현재 프롬프트·모델로 실행한 자동 지표 합격 (pretest 통과가 승인을 대신하지 않음)
+  errs.push(...pretestGate(ctx));
   return errs;
 }
 
-module.exports = { computeManifest, writeLock, verifyLock, contentGate, LOCK_SCOPE, LOCK_FILE };
+module.exports = { computeManifest, writeLock, verifyLock, contentGate, pretestGate, LOCK_SCOPE, LOCK_FILE, APPROVALS };

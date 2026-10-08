@@ -107,7 +107,7 @@ test('T06/T20: not_advice 2회 → S6·S8 생략, 설문 5문항, 422 안내', a
   await page.locator('textarea[name=advice]').fill('힘내 #notadvice');
   await page.getByRole('button', { name: '다음' }).click();
   await expect(page.locator('p.err')).toBeVisible(); // 재입력 안내
-  await page.locator('textarea[name=advice]').fill('많이 힘들었겠다 #notadvice');
+  await page.locator('textarea[name=advice]').fill('힘내 #notadvice'); // 1차와 같은 문장 재입력도 2차로 처리
   await page.getByRole('button', { name: '다음' }).click();
   await fillS5(page);
   await expect(page.locator('h1')).toHaveText('근거 대응');
@@ -156,6 +156,10 @@ test('T54: 중단 → 삭제 → 영수증으로 삭제 완료 표시, 세션 �
   expect(rows[0].c).toBe(0);
   await page.reload();
   await expect(page.getByTestId('deletion-status')).toHaveText('삭제 완료');
+  // T56: 영수증 소실 → 연구자 대면 확인 안내, 데이터 복원·재식별 없음
+  await page.evaluate(() => sessionStorage.removeItem('crsa.receipt'));
+  await page.reload();
+  await expect(page.getByTestId('deletion-status')).toContainText('연구자가 대면으로 확인');
 });
 
 test('T30: 즉시 도움 요청 → safety_stop 안내, 설문 차단', async ({ page }) => {

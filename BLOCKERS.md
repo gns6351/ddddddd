@@ -38,3 +38,5 @@
 | B29 | 정보 | DDL `experience_checks` CHECK는 SQLite의 NULL 평가 규칙상 has_experience=1·relevance NULL 행을 거부하지 못함 | 정식 DDL은 수정하지 않고 서비스 계층(422)에서 보증. 테스트로 확인 |
 | B30 | 결정 | advice_validity 값 매핑(명세는 fallback=unknown만 명시) | ok=valid, not_advice=invalid, unsafe/blaming/safety_hold/fallback=unknown |
 | B31 | 결정 | 조언 질(advice_quality) 코딩 시트 위치(명세 내보내기 표에 없음) | 별도 `advice_sheet.csv`(final_advice 기준) |
+| B32 | 외부 | §10.1 동의/운영 게이트 승인 근거(IRB 결정, 참여·국외 이전·녹음 동의서, 만 19세 확인 절차, LLM 제공자 국가·보유·활용 조건, 긴급 대응 매뉴얼·연락 체계·모의훈련, 연구자 교육, 사전 점검 수동 검토) | `config.approvals`에 근거 기록 전에는 서버 시작 차단 |
+| B33 | 외부 | §13.5 인터뷰 프로토콜: 질문 문구는 명세 원문 사용, 코드북·경로별 보조 질문 세부는 미제공 | `content/interview/protocol.json`(명세 Q1~Q6·표준 문구 원문)과 연구자 CLI `interview` 명령으로 경로별 질문·메모 틀만 제공 |

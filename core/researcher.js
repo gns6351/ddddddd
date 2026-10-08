@@ -69,4 +69,32 @@ function sessionStatus(ctx, sid) {
   return { session_id: sid, status: s.status, current_step: s.current_step, transform_outcome: s.transform_outcome, withdrawal_from_step: s.withdrawal_from_step, deletion: job || null };
 }
 
-module.exports = { enroll, rotateToken, safetyStop, withdrawByResearcher, sessionStatus };
+/**
+ * 인터뷰 프로토콜 (§13.5, T48): completed 참가자만. 경로별 질문만 노출, 메모 틀 생성(녹음 거부 시 필수).
+ * 메모에는 session_id 대신 별도 interview_id를 쓴다.
+ */
+function interviewPlan(ctx, sid, { writeMemo = true } = {}) {
+  const fs = require('fs');
+  const path = require('path');
+  const s = C.getSession(ctx, sid);
+  if (!s) throw new ApiError(404, 'NOT_FOUND');
+  if (s.status !== 'completed') throw new ApiError(409, 'INTERVIEW_ONLY_COMPLETED');
+  const proto = JSON.parse(fs.readFileSync(path.join(ctx.config.contentDir, 'interview', 'protocol.json'), 'utf8'));
+  const route = s.transform_outcome === 'ok' ? 'ok' : 'exception';
+  const questions = proto.questions.filter((q) => q.path === 'common' || q.path === route);
+  const interview_id = `I-${hex(6)}`;
+  const memo = [`# 인터뷰 메모 (${proto.version})`, `interview_id: ${interview_id}`, `interview_path: ${route === 'ok' ? 'ok' : '예외'}`,
+    'start_time:', 'end_time:', 'recording_consent: (yes/no)', 'researcher_id:', 'safety_incident: (yes/no)', '',
+    ...questions.flatMap((q) => [`## ${q.id} ${q.text}`, `규칙: ${q.rule}`, 'summary:', 'quote(동의 시):', 'missing_or_refusal_code:', 'followup(최대 1~2개):', '']),
+    `표준 진행 문구: ${proto.standard_opening}`, `중단 문구: ${proto.stop_phrase}`, ''].join('\n');
+  let memo_file = null;
+  if (writeMemo) {
+    const dir = path.join(ctx.config.storageRoot, 'interviews');
+    fs.mkdirSync(dir, { recursive: true });
+    memo_file = path.join(dir, `${String(s.participant_code).replace(/[^A-Za-z0-9_-]/g, '_')}_${interview_id}.memo.txt`);
+    fs.writeFileSync(memo_file, memo, { flag: 'wx' });
+  }
+  return { interview_id, path: route, questions: questions.map((q) => ({ id: q.id, text: q.text })), memo_file, opening: proto.standard_opening, stop_phrase: proto.stop_phrase };
+}
+
+module.exports = { enroll, rotateToken, safetyStop, withdrawByResearcher, sessionStatus, interviewPlan };

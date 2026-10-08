@@ -14,6 +14,7 @@ function makeEnv(overrides = {}) {
   fs.cpSync(path.join(ROOT, 'content', 'prompts'), path.join(content, 'prompts'), { recursive: true });
   fs.cpSync(path.join(ROOT, 'content', 'ui'), path.join(content, 'ui'), { recursive: true });
   fs.cpSync(path.join(ROOT, 'content', 'rulebased'), path.join(content, 'rulebased'), { recursive: true });
+  fs.cpSync(path.join(ROOT, 'content', 'interview'), path.join(content, 'interview'), { recursive: true });
   fs.cpSync(path.join(FIX, 'content', 'scenarios'), path.join(content, 'scenarios'), { recursive: true });
   fs.cpSync(path.join(FIX, 'content', 'safety'), path.join(content, 'safety'), { recursive: true });
   const exp = { ...JSON.parse(fs.readFileSync(path.join(FIX, 'experiment.json'), 'utf8')), ...overrides };

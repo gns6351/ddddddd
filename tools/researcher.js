@@ -9,6 +9,8 @@
  *   node tools/researcher.js deletion-run [session_id]    # 삭제 작업 재시도/재개
  *   node tools/researcher.js status <session_id>
  *   node tools/researcher.js list
+ *   node tools/researcher.js recruitment                  # 등록·ok 완료 인원만으로 모집 규칙 판정(T46)
+ *   node tools/researcher.js interview <session_id>       # 경로별 인터뷰 질문·메모 틀(§13.5)
  */
 const { loadEnvFile } = require('../core/config');
 const { createContext } = require('../core/context');
@@ -33,11 +35,18 @@ function main(argv) {
       }
       case 'deletion-run': out(a1 ? { phase: runDeletionJob(ctx, a1) } : { phases: resumeDeletionJobs(ctx) }); break;
       case 'status': out(R.sessionStatus(ctx, a1)); break;
+      case 'interview': out(R.interviewPlan(ctx, a1)); break;
+      case 'recruitment': {
+        const enrolled = ctx.db.prepare('SELECT count(*) c FROM sessions').get().c;
+        const nOk = ctx.db.prepare("SELECT count(DISTINCT session_id) c FROM sessions WHERE status='completed' AND transform_outcome='ok'").get().c;
+        out({ enrolled, n_ok: nOk, ...require('../core/analyzer').recruitmentStatus(enrolled, nOk) });
+        break;
+      }
       case 'list':
         out(ctx.db.prepare('SELECT session_id, status, current_step, transform_outcome, started_at FROM sessions ORDER BY started_at').all());
         break;
       default:
-        console.log(require('fs').readFileSync(__filename, 'utf8').split('\n').slice(3, 12).join('\n'));
+        console.log(require('fs').readFileSync(__filename, 'utf8').split('\n').slice(3, 14).join('\n'));
         process.exitCode = 2;
     }
   } catch (e) {
