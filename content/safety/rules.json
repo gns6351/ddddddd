@@ -1,5 +1,5 @@
 {
-  "version": "[미확정:B05] draft-0.1 (Claude 작성 초안 — 기관 위험 분류 기준·대응 매뉴얼로 검토 후 버전 확정)",
+  "version": "draft-0.1",
   "_note": "정규식(JavaScript, u 플래그). 원문(NFKC)과 공백 제거본 모두에 적용. urgent는 S4~S9 자유서술 전체, unsafe·blaming은 S4 조언에만 적용. rule_pre 오탐은 정상 ok 참가자를 S6·S8 생략 경로로 보내므로 unsafe·blaming은 정밀도 우선으로 좁게 작성하고 세부 판정은 LLM에 맡김.",
   "urgent": [
     {

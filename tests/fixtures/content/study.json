@@ -1,0 +1,4 @@
+{
+  "studyVersion": "test-1",
+  "scenarios": ["T-alpha", "T-beta", "T-gamma"]
+}

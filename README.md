@@ -1,57 +1,105 @@
-# 상담자 역할 게임 자기적용 시스템 v3.4 (로컬 연구용)
+# 상담자 역할 게임 자기적용 연구 시스템 (간편판)
 
-연구자 노트북에서 `127.0.0.1`로만 실행하는 연구 프로토타입. 요구사항은 명세 v3.4(DOCX)와 `db/schema.sql`(schema_v3.4.sql 원본).
-- 구현 계약: `docs/implementation-contract.md` · 미확정/충돌: `BLOCKERS.md` · 진행: `docs/progress.md` · 테스트 결과: `docs/test-matrix.md` · 코딩 형식: `docs/coding-format.md`
+참가자가 상담자가 되어 캐릭터(민서·지호·서윤)의 고민을 듣고 조언을 건넨 뒤, AI가 그 조언을 **나에게 하는 말**로 바꿔 돌려주면 자기 경험에 비추어 보는 연구용 웹 시스템입니다.
+연구자는 **웹 대시보드**에서 결과와 통계를 바로 확인합니다.
 
-**현재 상태: 실험 투입 불가.** 실제 시나리오 대사·동의서·안전 규칙 패턴·모델 ID·기관 승인(BLOCKERS B01~B05, B32 등)이 없으므로 서버는 실제 콘텐츠로 시작되지 않는다(의도된 차단).
+## 흐름
 
-## 설치
-```
-npm ci
-```
-`.env`(커밋 금지): `GEMINI_API_KEY=...`
+| 단계 | 화면 | 내용 |
+|---|---|---|
+| S1 | 안내 | 참가자 ID(선택), 동의 체크 |
+| S2 | 캐릭터 | 세 사람 중 비슷한 경험이 있는 사람 선택 (셋 다 없으면 종료) |
+| S3 | 대화 | 고정 대본에서 질문 3번 고르기 |
+| S4 | 조언 | 조언 작성 → AI 변환 (조언으로 안 읽히면 한 번 다시 쓰기) |
+| S5 | 내 경험 | 경험·감정·생각, 믿음 정도(0~100), 지금의 해석 |
+| S6 | 돌아온 말 | 변환문이 뜻을 담았는지, 고쳐 쓰기 (변환 ok일 때만) |
+| S7 | 근거 | 생각을 뒷받침하는 사실 / 맞지 않는 사실 |
+| S8 | 적용 | 공통점·차이점, 받아들임·고쳐서·보류·거절과 이유 (변환 ok일 때만) |
+| S9 | 다시 보기 | 믿음 정도·해석 다시 답하기 |
+| S10 | 설문 | 1~5점 (ok 경로 11문항, 그 외 5문항) |
+| S11 | 끝 | |
 
-## 실행
-- 개발·시연(가상 시나리오 + Mock LLM, 실제 참가자 사용 금지): `node test/support/dev-server.js` → http://127.0.0.1:3300
-- 실험 모드: `npm start` — `node tools/validate.js --gate`가 통과해야 시작된다. 파일럿 승인 후 `node tools/validate.js --write-lock`으로 동결하고 `config/experiment.json`의 `frozen: true`.
-- 파일럿은 별도 DB 경로로 운영: `DATA_DIR=./data-pilot npm start`
+AI로 보내는 것은 **S4 조언 + 캐릭터 상황 설명**뿐입니다. S5 이후 기록은 보내지 않습니다.
 
-## 외부 테스트 공유 (데모 모드, 실험 아님)
-```
-npm run demo            # 0.0.0.0:3300, 같은 네트워크에서 http://<이 컴퓨터 IP>:3300
-npm run demo -- --reset # 데모 데이터 초기화
-cloudflared tunnel --url http://localhost:3300   # 인터넷 공유가 필요할 때(https 주소 발급, 별도 설치)
-```
-- 현재 `content/` 초안을 사용하고 LLM은 Mock(가짜 변환 문장)으로 고정. 데이터는 `demo-data/`에만 저장.
-- S1의 '데모용 코드 자동 발급' 버튼으로 연구자 없이 시작. 조언 끝에 `#notadvice #unsafe #blaming #badjson #latchbad #timeout`을 붙이면 예외 경로 확인.
-- 실명·개인정보·실제 고민 입력 금지(화면 배너 표시). 방화벽에서 해당 포트 허용이 필요할 수 있음.
+## 노트북에서 실행
 
-## 연구자 CLI (네트워크 비노출)
-```
-node tools/researcher.js enroll <참가자코드>       # S1 전에 enrollment_id 발급
-node tools/researcher.js rotate <session_id>       # 토큰 회전·복구 URL
-node tools/researcher.js safety-stop <session_id> [담당자ID]
-node tools/researcher.js withdraw <session_id> keep|delete
-node tools/researcher.js deletion-run [session_id]
-node tools/researcher.js interview <session_id>
-node tools/researcher.js recruitment
-```
+1. Node.js 20.12 이상 설치 (https://nodejs.org)
+2. 이 폴더에서 처음 한 번:
+   ```
+   npm install
+   ```
+3. `.env.example`을 복사해 `.env`를 만들고 `GEMINI_API_KEY`를 넣습니다. 키를 비워 두면 **모의(mock) 모드**(가짜 변환 문장)로 동작합니다.
+4. 서버 켜기:
+   ```
+   npm start
+   ```
+   창에 주소가 나옵니다.
+   - 참가자 화면: `http://localhost:3000`
+   - 연구자 대시보드: `http://localhost:3000/admin`
+   - 같은 와이파이의 다른 기기: 창에 나온 `http://192.168.x.x:3000`
 
-## 데이터 처리
+자체 테스트 데이터를 따로 두려면 `.env`에 `DATA_DIR=data-selftest`를 넣고 켭니다. 본 실험 때 `DATA_DIR=data`로 바꾸면 대시보드도 그 폴더만 봅니다.
+
+## 다른 사람에게 링크로 받기 (인터넷)
+
+1. cloudflared 설치 (한 번만)
+   - 윈도우: `winget install --id Cloudflare.cloudflared`
+   - 맥: `brew install cloudflared`
+2. `.env`에 `ACCESS_CODE=아무코드`를 넣고 서버를 켭니다(`npm start`).
+3. 새 창에서 `npm run tunnel` → 화면에 나온 **참가자 링크**를 보냅니다. 예: `https://xxxx.trycloudflare.com/?pid=P01&code=아무코드`
+
+- 노트북과 두 창을 켜 둬야 링크가 살아 있습니다. 터널을 다시 켜면 주소가 바뀝니다.
+- 외부에서 들어온 요청은 주소당 1시간에 세션 60개까지 만들 수 있습니다(API 요금 보호).
+
+## 연구자 대시보드 (`/admin`)
+
+- **통계 탭** (15초마다 자동 새로고침)
+  - 시작·완료·중도 종료 수, 소요 시간
+  - 단계별 도달(이탈 지점), 단계별 소요 시간
+  - 캐릭터 선택·관련성
+  - 조언 변환 결과(ok·조언 아님·unsafe·blaming·실패)와 조언 유형
+  - **믿음 정도 사전→사후**: 참가자별 선 그래프, 대응 t검정·95% CI·효과크기 dz·윌콕슨(전체 / ok 경로 / 그 외 경로)
+  - 뜻 보존(S6)·적용 판단(S8) 분포와 교차표
+  - 설문 문항별 평균(SD)을 경로별로 표시
+- **세션 기록 탭**: 참가자별로 쓴 글 전체, AI 호출 원문(JSON), 세션 삭제(테스트 데이터 정리용)
+- **내보내기 탭**: 세션 CSV(한 사람당 한 행, 엑셀·SPSS·R), 전체 JSON, 통계 보고서 HTML(브라우저에서 PDF로 인쇄)
+- 필터: AI 모드(실제/모의), 캐릭터
+- 접근: `.env`에 `ADMIN_TOKEN`이 없으면 **서버를 켠 PC에서만** 열립니다. 다른 PC에서 보려면 `ADMIN_TOKEN`을 정하고 그 비밀번호를 입력합니다.
+
+통계 계산은 scipy 1.18 결과와 대조해 확인했습니다(`tests/stats.test.js`). 표본이 작을 때 p값은 참고용입니다.
+
+## 내용 고치기
+
+| 무엇 | 파일 |
+|---|---|
+| 캐릭터·대사 | `content/scenarios/<id>/scenario.json` (순서는 `content/study.json`) |
+| 화면 문구·설문 문항 | `content/ui/strings.json` |
+| 변환 프롬프트 | `content/prompts/transform/v2.md` (새 버전은 `v3.md`로 만들고 `.env`의 `TRANSFORM_PROMPT=v3`) |
+| 위험 키워드 | `content/safety/rules.json` |
+
+문구 파일은 서버 재시작 없이 다음 화면부터 반영됩니다. 세션 기록에는 콘텐츠 해시와 프롬프트 해시가 남아 어떤 버전으로 얻은 결과인지 구분됩니다.
+
+**위험 키워드**는 두 종류입니다.
+- 위험 신호(urgent): 화면에 상담전화 안내(109, 1577-0199)를 띄우고 기록합니다. 진행은 계속됩니다.
+- 조언 속 위험·비난(unsafe·blaming): AI 호출 없이 해당 결과로 분류합니다.
+
+## 변환 점검
+
 ```
-node tools/export.js                 # export/ : sessions.csv, 블라인드 시트, coding_key.csv(코더 비공개), llm_log.csv, timeline
-node tools/analyze.js --reliability  # coding/coder1_*.csv, coder2_*.csv
-node tools/analyze.js                # stats/ + analysis_runs·stats 테이블
-node tools/pretest.js --prompt transform@v2
+npm run check:transform -- --repeat 3
 ```
-삭제 작업이 진행 중이면 export/analyze는 차단된다.
+`content/prompts/transform/tests.json`의 문장을 3번씩 변환해 `results/`에 CSV를 만듭니다. 반복마다 결과가 달라진 문장도 알려 줍니다.
+모의 모드에서 시험하려면 조언 끝에 `#notadvice #unsafe #blaming #badjson #error`를 붙이면 해당 경로로 갑니다.
 
 ## 테스트
-```
-npx vitest run
-npx playwright test     # Chromium: /opt/pw-browsers/chromium 또는 PW_CHROMIUM
-```
 
-## 보안·개인정보
-- `.env`, `data/`, `export/`, `coding/*`, `interviews/*`, `stats/*`, `backups/`, `*.db`는 `.gitignore` 대상(원시 상담 데이터·API 키 업로드 금지).
-- SQLite는 암호화되지 않는다. 노트북 전체 디스크 암호화를 적용한다(§9, B27).
+```
+npm test            # 흐름·분기·오류·Gemini 요청 형식·대시보드 접근·통계(scipy 대조)
+npm run test:e2e    # 브라우저로 참가자 1명 완주 + 대시보드 확인
+```
+테스트는 `tests/fixtures/content`의 가상 콘텐츠와 가짜 AI를 쓰므로 키가 필요 없습니다.
+
+## 데이터
+
+- 세션마다 `data/sessions/<id>.json` 파일 하나. 이 폴더가 원본이니 실험 기간에는 자주 다른 곳에 복사해 두세요.
+- `.env`, `data*/`, `results/`는 GitHub에 올라가지 않습니다.

@@ -1,478 +1,399 @@
-'use strict';
-/*
- * 참가자 화면 (S1~S11). 화면 선택은 항상 서버 current_step/status를 따른다.
- * 모든 사용자 텍스트는 textContent로만 렌더링한다(HTML 해석 금지).
- * sessionStorage(같은 탭)에만 세션 비밀·삭제 영수증을 보관한다.
- */
-(() => {
-  const K = { sid: 'crsa.sid', secret: 'crsa.secret', create: 'crsa.create', receipt: 'crsa.receipt', ended: 'crsa.ended' };
-  const store = {
-    get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
-    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* 저장 불가 */ } },
-    del: (k) => { try { sessionStorage.removeItem(k); } catch { /* 무시 */ } },
-    clear: () => { try { sessionStorage.clear(); } catch { /* 무시 */ } },
-  };
-  const $app = document.getElementById('app');
-  const $bar = document.getElementById('bar');
-  let pub = null; // 공개 문구 (S1, S11, common)
-  let view = null;
-  let pollTimer = null;
-  const evq = [];
-  const lastReq = {};
+// 참가자 화면. 단계는 서버가 정하고, 화면은 서버가 준 stage에 맞춰 그리기만 한다.
+const app = document.getElementById('app');
+const KEY = 'selfapp-session';
+let T = null; // 화면 문구 (content/ui/strings.json)
+let view = null;
+let lastStage = null;
 
-  /* ---------- 유틸 ---------- */
-  const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, '0')).join('');
-  const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : hex(16));
-  const cp = (s) => [...s].length;
-  function el(tag, attrs = {}, ...kids) {
-    const e = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-      if (v === undefined || v === null || v === false) continue;
-      if (k === 'text') e.textContent = v;
-      else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
-      else if (v === true) e.setAttribute(k, '');
-      else e.setAttribute(k, v);
+// ---------- 유틸 ----------
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'class') el.className = v;
+    else if (k === 'value') el.value = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false || c === '') continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+
+const storage = {
+  get() { try { return localStorage.getItem(KEY); } catch { return null; } },
+  set(v) { try { localStorage.setItem(KEY, v); } catch { /* 저장 못 해도 진행 가능 */ } },
+  clear() { try { localStorage.removeItem(KEY); } catch { /* 무시 */ } },
+};
+
+// 받침에 따라 와/과
+function josa(name) {
+  const c = name.charCodeAt(name.length - 1);
+  return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '과' : '와';
+}
+function fill(text, vars = {}) {
+  const name = vars.name ?? view?.character?.name ?? '';
+  return String(text ?? '')
+    .replace(/\{name\}[와과]/g, name + josa(name || '가'))
+    .replace(/\{(\w+)\}/g, (m, k) => (k === 'name' ? name : k in vars ? vars[k] : m));
+}
+
+async function api(path, body) {
+  let res;
+  try {
+    res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch {
+    throw Object.assign(new Error(T?.common.network_error || '서버에 연결하지 못했어요'), { status: 0 });
+  }
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || `요청 실패 (${res.status})`), { status: res.status, ...data });
+  return data;
+}
+
+function logEvent(type, value) {
+  if (!view || view.stage === 'S11') return;
+  fetch(`/api/sessions/${view.id}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, value }), keepalive: true,
+  }).catch(() => {});
+}
+
+function showSafety(flag) {
+  if (!flag) return;
+  document.getElementById('safety-text').textContent = T.common.safety_banner;
+  document.getElementById('safety').hidden = false;
+}
+document.getElementById('safety-close').addEventListener('click', () => { document.getElementById('safety').hidden = true; });
+
+document.getElementById('withdraw').addEventListener('click', async () => {
+  if (!view || !confirm(T.common.withdraw_confirm)) return;
+  try { view = await api(`/api/sessions/${view.id}/withdraw`, {}); render(); } catch (e) { alert(e.message); }
+});
+
+function renderTop() {
+  const ol = document.getElementById('steps');
+  ol.replaceChildren();
+  const idx = view ? Number(view.stage.slice(1)) - 1 : 0;
+  T.steps.forEach((label, i) => ol.append(h('li', { class: i === idx ? 'on' : i < idx ? 'past' : '', 'aria-current': i === idx ? 'step' : null }, label)));
+  document.getElementById('withdraw').hidden = !view || view.stage === 'S11';
+  document.getElementById('withdraw').textContent = T.common.withdraw_button;
+}
+
+// ---------- 입력 칸 ----------
+const fields = new Map(); // 서버 오류(field)를 해당 칸에 표시하기 위해
+
+function wrapField(id, label, control, extra = []) {
+  const err = h('div', { class: 'field-error', role: 'alert' });
+  const el = h('div', { class: 'field' }, h('label', { class: 'q', for: id }, label), control, ...extra, err);
+  fields.set(id, { el, err, label });
+  return el;
+}
+
+function textField(id, label, { max = 2000, value = '', placeholder = '', single = false } = {}) {
+  const input = single
+    ? h('input', { type: 'text', id, value, placeholder, autocomplete: 'off' })
+    : h('textarea', { id, value, placeholder });
+  const count = h('div', { class: 'count' });
+  const upd = () => { count.textContent = fill(T.common.length, { length: [...input.value.trim()].length, max }); };
+  input.addEventListener('input', upd);
+  upd();
+  return { el: wrapField(id, label, input, [count]), input, get: () => input.value };
+}
+
+function slider(id, label, min = 0, max = 100) {
+  let touched = false;
+  const out = h('output', {}, '—');
+  const range = h('input', { type: 'range', id, min, max, step: 1, value: Math.round((min + max) / 2), class: 'untouched' });
+  const mark = () => { touched = true; range.classList.remove('untouched'); out.textContent = range.value; };
+  for (const ev of ['input', 'pointerdown', 'keydown']) range.addEventListener(ev, mark);
+  const el = wrapField(id, label, h('div', { class: 'scale' }, range, out), [h('div', { class: 'ends' }, h('span', {}, `${min} 전혀 믿지 않음`), h('span', {}, `${max} 완전히 믿음`))]);
+  return { el, get: () => (touched ? Number(range.value) : null) };
+}
+
+// 버튼형 선택: opts = [{value, label, help?}]
+function choice(id, label, opts, { solid = false, ends = null, onChange } = {}) {
+  let value = null;
+  const group = h('div', { class: `opts${solid ? ' solid' : ''}${opts.length === 4 ? ' four' : ''}`, role: 'radiogroup', 'aria-label': label },
+    opts.map((o) => {
+      const radio = h('input', { type: 'radio', name: id, value: String(o.value) });
+      radio.addEventListener('change', () => { value = o.value; onChange?.(o.value); });
+      return h('label', {}, radio, h('b', {}, o.label), o.help ? h('small', {}, o.help) : '');
+    }));
+  const extra = ends ? [h('div', { class: 'ends' }, h('span', {}, ends[0]), h('span', {}, ends[1]))] : [];
+  const el = wrapField(id, label, group, extra);
+  el.querySelector('label.q').removeAttribute('for');
+  return { el, get: () => value };
+}
+
+// 글 + "떠오르지 않아요"
+function textOrNone(id, noneId, label, noneLabel, max) {
+  const t = textField(id, label, { max });
+  const box = h('input', { type: 'checkbox', id: noneId });
+  box.addEventListener('change', () => { t.input.disabled = box.checked; });
+  t.el.insertBefore(h('label', { class: 'check' }, box, noneLabel), t.el.querySelector('.field-error'));
+  return { el: t.el, get: () => (box.checked ? { [id]: '', [noneId]: true } : { [id]: t.get(), [noneId]: false }) };
+}
+
+function charMsg(text, name = view.character.name) {
+  return h('div', { class: 'msg character' }, h('div', { class: 'who' }, name), text);
+}
+
+// 제출 공통: 중복 클릭 막기, 칸별 오류, 지난 단계면 새로 불러오기
+function submitBar(label, send) {
+  const err = h('div', { class: 'error', role: 'alert' });
+  const btn = h('button', { type: 'button' }, label || T.common.submit);
+  btn.addEventListener('click', async () => {
+    err.textContent = '';
+    for (const f of fields.values()) { f.err.textContent = ''; f.el.classList.remove('bad'); }
+    btn.disabled = true;
+    try {
+      await send();
+    } catch (e) {
+      btn.disabled = false;
+      if (e.status === 409) { await reload(); return; }
+      const f = e.field && fields.get(e.field);
+      if (f) {
+        const tpl = { too_short: T.common.too_short, too_long: T.common.too_long }[e.reason] || T.common.required;
+        f.err.textContent = fill(tpl, { label: f.label, min: e.min, max: e.max });
+        f.el.classList.add('bad');
+        f.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } else err.textContent = e.message;
     }
-    for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c instanceof Node ? c : document.createTextNode(String(c)));
-    return e;
-  }
-  const t = (s) => (s === undefined || s === null ? '' : String(s));
-  const fmt = (s, o) => t(s).replace(/\{(\w+)\}/g, (_, k) => t(o[k]));
+  });
+  return { el: h('div', {}, h('div', { class: 'actions' }, btn), err), btn, err };
+}
 
-  /** 같은 단계·같은 본문 재전송이면 같은 request_id 재사용 (응답 유실 복구) */
-  function reqId(key, body) {
-    const b = JSON.stringify(body);
-    if (lastReq[key] && lastReq[key].b === b) return lastReq[key].id;
-    const id = uuid();
-    lastReq[key] = { b, id };
-    return id;
-  }
+async function step(path, body) {
+  const data = await api(`/api/sessions/${view.id}/${path}`, body);
+  showSafety(data.safety);
+  view = data;
+  render();
+}
 
-  async function api(method, path, body, { auth = true } = {}) {
-    const h = { 'X-Requested-With': 'research-app' };
-    if (body !== undefined) h['Content-Type'] = 'application/json';
-    if (auth && store.get(K.secret)) h.Authorization = `Bearer ${store.get(K.secret)}`;
-    let res;
-    try { res = await fetch(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', credentials: 'omit' }); }
-    catch { return { status: 0, body: { error: 'NETWORK' } }; }
-    let json = {};
-    try { json = await res.json(); } catch { /* 비JSON */ }
-    return { status: res.status, body: json };
-  }
+async function reload() {
+  try { view = await api(`/api/sessions/${view.id}`); } catch { storage.clear(); view = null; }
+  render();
+}
 
-  function track(type, payload = {}) { evq.push({ event_id: uuid(), type, payload, ts: new Date().toISOString() }); }
-  async function flushEvents() {
-    if (!evq.length || !store.get(K.sid)) return;
-    const batch = evq.splice(0, evq.length);
-    await api('POST', `/api/sessions/${store.get(K.sid)}/events`, batch);
-  }
-
-  /* ---------- 공통 입력 위젯 ---------- */
-  function textField(name, label, [min, max], { value = '', rows = 3 } = {}) {
-    const ta = el('textarea', { name, rows, autocomplete: 'off', spellcheck: 'false', 'aria-label': label });
-    ta.value = value;
-    const counter = el('div', { class: 'counter' });
-    const update = () => {
-      const n = cp(ta.value.trim());
-      counter.textContent = fmt(pub.common.length_notice, { length: n, min, max });
-      counter.classList.toggle('bad', n > 0 && (n < min || n > max));
-    };
-    ta.addEventListener('input', update); update();
-    const wrap = el('div', { 'data-field': name }, el('label', { text: label }), ta, counter, el('div', { class: 'err', 'data-err': name }));
-    wrap.input = ta;
-    return wrap;
-  }
-  function radios(name, options, { onchange } = {}) {
-    const box = el('div', { class: 'radio', role: 'radiogroup', 'data-field': name });
-    for (const [value, label] of options) {
-      const r = el('input', { type: 'radio', name, value });
-      if (onchange) r.addEventListener('change', () => onchange(value));
-      box.append(el('label', {}, r, label));
-    }
-    box.append(el('div', { class: 'err', 'data-err': name }));
-    box.value = () => { const c = box.querySelector('input:checked'); return c ? c.value : null; };
-    return box;
-  }
-  function numberField(name, label) {
-    const inp = el('input', { type: 'number', name, min: 0, max: 100, step: 1, inputmode: 'numeric', autocomplete: 'off' });
-    inp.addEventListener('change', () => track('belief_set', { field: name }));
-    const wrap = el('div', { 'data-field': name }, el('label', { text: label }), inp, el('div', { class: 'err', 'data-err': name }));
-    wrap.value = () => (inp.value === '' ? null : Number(inp.value));
-    return wrap;
-  }
-  function noneCheck(name, label, onchange) {
-    const c = el('input', { type: 'checkbox', name });
-    c.addEventListener('change', () => { track('evidence_none_check', { field: name, checked: c.checked }); onchange?.(c.checked); });
-    const wrap = el('label', {}, c, ' ', label);
-    wrap.checked = () => c.checked;
-    return wrap;
-  }
-  function showErrors(fields) {
-    document.querySelectorAll('[data-err]').forEach((e) => { e.textContent = ''; });
-    let first = null;
-    for (const f of fields || []) {
-      const box = document.querySelector(`[data-err="${CSS.escape(f.field)}"]`);
-      const msg = f.min !== undefined ? fmt(pub.common.length_notice, { length: f.length ?? '-', min: f.min, max: f.max }) : pub.common.required_notice;
-      if (box) { box.textContent = msg; first = first || box; }
-    }
-    first?.scrollIntoView({ block: 'center' });
-  }
-  function submitBtn(label, fn) {
-    const b = el('button', { type: 'button', class: 'primary', text: label || pub.common.submit });
-    b.addEventListener('click', async () => { b.disabled = true; try { await fn(); } finally { b.disabled = false; } });
-    return b;
-  }
-  const charHeader = (c) => el('div', { class: 'char' }, c.image_url ? el('img', { src: c.image_url, alt: '' }) : null, el('strong', { text: c.name }));
-
-  /* ---------- 서버 응답 처리 ---------- */
-  /** 오류 유형별 안내 + 진단용 코드(연구자 확인용) */
-  function errorText(res) {
-    const C = pub.common;
-    const code = (res.body && res.body.error) || res.status;
-    const map = {
-      ENROLLMENT_INVALID: C.enrollment_invalid, ENROLLMENT_USED: C.enrollment_used, NETWORK: C.network_error,
-      HOST_FORBIDDEN: C.access_forbidden, ORIGIN_FORBIDDEN: C.access_forbidden, CSRF_REJECTED: C.access_forbidden,
-    };
-    const text = map[code] || (res.status === 409 ? C.conflict : res.status >= 500 ? C.server_error : C.server_error);
-    return `${text} (${code})`;
-  }
-
-  async function handle(res, { onOk } = {}) {
-    if (res.status === 422) { showErrors(res.body.fields); return false; }
-    if (res.status === 401) { return endFromRevoked(res.body); }
-    if (res.status === 409) { alert(errorText(res)); await refresh(); return false; }
-    if (res.status === 0 || res.status >= 400) { alert(errorText(res)); return false; }
-    if (onOk) await onOk(res.body);
-    // 종료 전이 응답(토큰 폐기 동반)의 status를 먼저 기억해 종료 안내 유형을 정확히 표시
-    if (res.body && res.body.status && res.body.status !== 'active') { store.set(K.ended, res.body.status); view = { ...view, status: res.body.status }; }
-    await refresh();
-    return true;
-  }
-
-  async function refresh() {
-    clearTimeout(pollTimer);
-    const sid = store.get(K.sid);
-    if (!sid) {
-      if (store.get(K.receipt) || store.get(K.ended) === 'deletion_pending') return renderDeletionStatus(); // 영수증 소실 시 연구자 절차 안내
-      if (store.get(K.ended)) return renderEnded(store.get(K.ended));
-      return renderS1();
-    }
-    const r = await api('GET', `/api/sessions/${encodeURIComponent(sid)}`);
-    if (r.status === 401) return endFromRevoked(r.body);
-    if (r.status !== 200) { $app.replaceChildren(el('p', { class: 'err', text: errorText(r) })); return; }
-    view = r.body;
+// ---------- 화면 ----------
+function renderS1() {
+  const s = T.S1;
+  const params = new URLSearchParams(location.search);
+  const pid = textField('participantId', s.pid_label, { single: true, value: params.get('pid') || '', max: 32 });
+  pid.el.querySelector('.count').remove();
+  const urlCode = params.get('code') || '';
+  const code = textField('accessCode', s.code_label, { single: true, value: urlCode, max: 64 });
+  code.el.querySelector('.count').remove();
+  const agree = h('input', { type: 'checkbox', id: 'consent' });
+  const bar = submitBar(s.start, async () => {
+    if (!agree.checked) throw Object.assign(new Error(s.agree_label), { field: 'consent' });
+    view = await api('/api/sessions', { participantId: pid.get().trim(), accessCode: code.get().trim(), consent: true });
+    storage.set(view.id);
     render();
-  }
+  });
+  bar.btn.disabled = true;
+  agree.addEventListener('change', () => { bar.btn.disabled = !agree.checked; });
+  app.replaceChildren(
+    h('h1', {}, s.title),
+    h('p', {}, s.lead),
+    h('div', { class: 'card' }, h('ul', { class: 'notices' }, s.notices.map((n) => h('li', {}, n)))),
+    pid.el,
+    CONFIG.needsAccessCode && !urlCode ? code.el : '',
+    h('div', { class: 'field' }, h('label', { class: 'check' }, agree, s.agree_label)),
+    bar.el,
+  );
+}
 
-  /** 토큰 폐기(종료 상태) → 세션 비밀 삭제 후 공개 종료 안내 */
-  function endFromRevoked(body) {
-    const last = view && view.status !== 'active' ? view.status : (store.get(K.ended) || 'ended');
-    store.del(K.sid); store.del(K.secret);
-    store.set(K.ended, last);
-    if (store.get(K.receipt)) return renderDeletionStatus();
-    return renderEnded(last);
-  }
+function renderS2() {
+  const s = T.S2;
+  let picked = null;
+  const list = h('div', { class: 'choices', role: 'radiogroup' }, view.characters.map((c) => {
+    const radio = h('input', { type: 'radio', name: 'character', value: c.id, disabled: c.checked });
+    radio.addEventListener('change', () => { picked = c.id; });
+    return h('label', { class: `choice${c.checked ? ' off' : ''}` }, radio,
+      h('span', {}, h('span', { class: 'name' }, c.name), h('span', { class: 'title' }, c.title), h('br'), c.summary,
+        c.checked ? h('div', { class: 'muted' }, s.checked) : ''));
+  }));
+  const rel = choice('relevance', s.relevance_label, [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n })), { solid: true, ends: [s.relevance_min, s.relevance_max] });
+  rel.el.hidden = true;
+  const exp = choice('has_experience', s.experience_label, [{ value: true, label: s.experience_yes }, { value: false, label: s.experience_no }],
+    { onChange: (v) => { rel.el.hidden = !v; } });
+  const bar = submitBar(null, async () => {
+    if (!picked) throw new Error(s.pick_first);
+    await step('pick', { character_id: picked, has_experience: exp.get(), relevance: exp.get() ? rel.get() : null });
+  });
+  app.replaceChildren(h('h1', {}, s.title), h('p', { class: 'muted' }, s.intro), list, exp.el, rel.el, bar.el);
+}
 
-  /* ---------- 상단 버튼 (S2~S10) ---------- */
-  function setBar(step) {
-    const show = view && view.status === 'active' && /^S([2-9]|10)$/.test(step);
-    $bar.hidden = !show;
-    if (!show) return;
-    document.getElementById('step-label').textContent = view.context?.strings?.title || '';
-    const help = document.getElementById('btn-help');
-    const wd = document.getElementById('btn-withdraw');
-    help.textContent = pub.common.help_button;
-    wd.textContent = pub.common.withdraw_button;
-    help.onclick = async () => {
-      if (!confirm(pub.common.help_confirm)) return;
-      const r = await api('POST', `/api/sessions/${store.get(K.sid)}/help`, {});
-      if (r.status === 200) { view = { ...view, status: 'safety_stop' }; store.set(K.ended, 'safety_stop'); }
-      await handle(r);
-    };
-    wd.onclick = async () => {
-      if (!confirm(pub.common.withdraw_confirm)) return;
-      await handle(await api('POST', `/api/sessions/${store.get(K.sid)}/withdraw`, {}));
-    };
-  }
+function chatHistory() {
+  const chat = h('div', { class: 'chat' }, charMsg(view.intro));
+  for (const x of view.history) chat.append(h('div', { class: 'msg player' }, x.question), charMsg(x.reply));
+  return chat;
+}
 
-  /* ---------- S1 ---------- */
-  function renderS1() {
-    $bar.hidden = true;
-    const S = pub.S1;
-    const consent = el('input', { type: 'checkbox', name: 'consent' });
-    const transfer = el('input', { type: 'checkbox', name: 'transfer_consent' });
-    const code = el('input', { type: 'text', name: 'participant_code', autocomplete: 'off' });
-    const enroll = el('input', { type: 'text', name: 'enrollment_id', autocomplete: 'off' });
-    const msg = el('p', { class: 'err' });
-    const pending = (() => { try { return JSON.parse(store.get(K.create) || 'null'); } catch { return null; } })();
-    if (pending) { code.value = pending.participant_code; enroll.value = pending.enrollment_id; }
-    $app.replaceChildren(
-      el('h1', { text: S.title }),
-      el('section', {}, ...Object.values(S.notices).map((n) => el('p', { text: n }))),
-      el('section', {},
-        el('label', {}, consent, ' ', S.consent_label),
-        el('label', {}, transfer, ' ', S.transfer_consent_label),
-        el('p', { class: 'notice', text: S.transfer_required })),
-      el('section', {}, el('strong', { text: S.researcher_section }),
-        pub.demo ? el('button', { type: 'button', 'data-testid': 'demo-enroll', text: '데모용 코드 자동 발급', onclick: async () => {
-          const r = await api('POST', '/api/demo/enroll', {}, { auth: false });
-          if (r.status === 201) { code.value = r.body.participant_code; enroll.value = r.body.enrollment_id; }
-        } }) : null,
-        el('label', { text: S.participant_code_label }), code,
-        el('label', { text: S.enrollment_id_label }), enroll),
-      msg,
-      submitBtn(S.start, async () => {
-        msg.textContent = '';
-        if (!consent.checked || !transfer.checked) { msg.textContent = S.transfer_required; return; }
-        // 응답 유실 대비: 같은 탭에 요청 본문·비밀을 먼저 보관 후 전송 (T26)
-        let body = pending && pending.participant_code === code.value.trim() && pending.enrollment_id === enroll.value.trim() ? pending : null;
-        if (!body) {
-          body = { participant_code: code.value.trim(), enrollment_id: enroll.value.trim(), request_id: uuid(), resume_secret: hex(32), consent: true, transfer_consent: true };
-          store.set(K.create, JSON.stringify(body));
-        }
-        const r = await api('POST', '/api/sessions', body, { auth: false });
-        if (r.status === 200 || r.status === 201) {
-          store.set(K.sid, r.body.session_id); store.set(K.secret, body.resume_secret); store.del(K.create); store.del(K.ended);
-          return refresh();
-        }
-        if (r.status === 422) msg.textContent = r.body.error === 'CONSENT_REQUIRED' ? S.transfer_required : `${pub.common.required_notice} (${(r.body.fields || []).map((f) => f.field).join(', ')})`;
-        else msg.textContent = errorText(r);
-        if (r.status === 409 || r.status === 403) store.del(K.create);
-      }),
-    );
-  }
-
-  /* ---------- 단계별 렌더 ---------- */
-  function render() {
-    const v = view;
-    setBar(v.current_step);
-    if (v.status !== 'active') return renderS11();
-    const c = v.context || {};
-    const S = c.strings || {};
-    const sid = store.get(K.sid);
-    const step = v.current_step;
-    const post = (path, body) => api('POST', `/api/sessions/${sid}${path}`, body);
-    const stepPost = async (data) => { await flushEvents(); return handle(await post(`/steps/${step}`, { request_id: reqId(step, data), data })); };
-
-    switch (step) {
-      case 'S2': {
-        const pick = radios('character', c.characters.map((ch) => [ch.id, `${ch.name} — ${ch.summary}`]));
-        const exp = radios('has_experience', [['yes', S.experience_yes], ['no', S.experience_no]], { onchange: (val) => { rel.hidden = val !== 'yes'; } });
-        const rel = el('div', { hidden: true }, el('label', { text: S.relevance_label }), radios('relevance', [1, 2, 3, 4, 5].map((n) => [String(n), String(n)])));
-        $app.replaceChildren(el('h1', { text: S.title }), el('p', { text: S.intro }),
-          el('section', {}, el('label', { text: S.pick_label }), pick),
-          el('section', {}, el('label', { text: S.experience_label }), exp, rel),
-          submitBtn(null, async () => {
-            const has = exp.value();
-            const relv = rel.querySelector('input:checked');
-            const data = { character_id: pick.value(), has_experience: has === 'yes' ? true : has === 'no' ? false : null, relevance: has === 'yes' && relv ? Number(relv.value) : null };
-            await stepPost(data);
-          }));
-        break;
-      }
-      case 'S3': {
-        const hist = el('div', {}, el('div', { class: 'bubble', text: c.intro }));
-        for (const hh of c.history) hist.append(el('div', { class: 'bubble me', text: hh.choice_text }), el('div', { class: 'bubble', text: hh.reply }));
-        const opts = el('div', {}, el('p', { class: 'notice', text: S.choose }));
-        for (const o of c.options) {
-          const b = el('button', { type: 'button', class: 'choice-btn', text: o.text, 'data-choice': o.id });
-          b.addEventListener('click', async () => {
-            opts.querySelectorAll('button').forEach((x) => { x.disabled = true; });
-            track('choice_select', { turn: c.turn, choice_id: o.id });
-            await flushEvents();
-            const body = { turn: c.turn, choice_id: o.id };
-            await handle(await post('/dialogue', { ...body, request_id: reqId(`S3-${c.turn}`, body) }));
-          });
-          opts.append(b);
-        }
-        $app.replaceChildren(el('h1', { text: S.title }), el('section', {}, charHeader(c.character), hist), el('section', {}, opts));
-        break;
-      }
-      case 'S4': {
-        const ts = v.transform_state || {};
-        const head = el('section', {}, charHeader(c.character), el('div', { class: 'bubble', text: c.intro }),
-          ...c.history.flatMap((hh) => [el('div', { class: 'bubble me', text: hh.choice_text }), el('div', { class: 'bubble', text: hh.reply })]),
-          el('div', { class: 'bubble', 'data-testid': 'closing', text: c.closing }));
-        if (ts.pending) {
-          $app.replaceChildren(el('h1', { text: S.title }), head, el('p', { class: 'notice', text: S.pending }));
-          pollTimer = setTimeout(refresh, 1000);
-          break;
-        }
-        const f = textField('advice', S.title, [c.limits.min, c.limits.max], { rows: 5 });
-        $app.replaceChildren(el('h1', { text: S.title }), head,
-          el('p', { class: ts.retry ? 'err' : 'notice', text: ts.retry ? S.retry_guide : S.guide }), f,
-          submitBtn(null, async () => {
-            const advice = f.input.value;
-            if (!advice.trim()) return showErrors([{ field: 'advice', min: 1, max: 2000, length: 0 }]);
-            // 새로 만들 입력 차수 기준 키: 재입력에서 1차와 같은 문장을 내도 별도 request_id
-            const r = await post('/transform', { advice, request_id: reqId(`S4-${(ts.attempt || 0) + 1}`, advice) });
-            await handle(r);
-          }));
-        break;
-      }
-      case 'S5': {
-        const L = { situation: [2, 2000], emotion: [2, 500], automatic_thought: [2, 500], view_pre: [2, 2000] };
-        const fs = { situation: textField('situation', S.situation_label, L.situation), emotion: textField('emotion', S.emotion_label, L.emotion, { rows: 2 }),
-          automatic_thought: textField('automatic_thought', S.automatic_thought_label, L.automatic_thought, { rows: 2 }) };
-        const belief = numberField('belief_pre', S.belief_label);
-        const vp = textField('view_pre', S.view_label, L.view_pre);
-        $app.replaceChildren(el('h1', { text: S.title }), el('p', { text: S.prompt }), el('section', {}, fs.situation, fs.emotion, fs.automatic_thought, belief, vp),
-          submitBtn(null, () => stepPost({ situation: fs.situation.input.value, emotion: fs.emotion.input.value, automatic_thought: fs.automatic_thought.input.value, belief_pre: belief.value(), view_pre: vp.input.value })));
-        break;
-      }
-      case 'S6': {
-        const fid = radios('fidelity', Object.entries(S.fidelity_options), { onchange: (val) => track('fidelity_select', { value: val }) });
-        const ed = textField('edited_self', S.edit_label, [2, 1000]);
-        ed.input.addEventListener('change', () => track('self_edit', { edited: ed.input.value.trim() !== '', char_count: cp(ed.input.value.trim()) }));
-        $app.replaceChildren(el('h1', { text: S.title }),
-          el('section', {}, el('label', { text: S.original_label }), el('div', { class: 'quote', 'data-testid': 'final-advice', text: c.final_advice }),
-            el('label', { text: S.self_label }), el('div', { class: 'quote', 'data-testid': 'shown-self', text: c.shown_self })),
-          el('section', {}, el('label', { text: S.fidelity_label }), fid, ed),
-          submitBtn(null, () => stepPost({ fidelity: fid.value(), edited_self: ed.input.value.trim() ? ed.input.value : null })));
-        break;
-      }
-      case 'S7': {
-        const side = (key, noneKey, label) => {
-          const f = textField(key, label, [2, 2000]);
-          const n = noneCheck(noneKey, S.none_label, (on) => { f.input.disabled = on; if (on) f.input.value = ''; });
-          return { f, n };
-        };
-        const a = side('evidence_for', 'for_none', S.for_label), b = side('evidence_against', 'against_none', S.against_label);
-        $app.replaceChildren(el('h1', { text: S.title }), el('section', {}, el('label', { text: S.thought_label }), el('div', { class: 'quote', text: c.automatic_thought })),
-          el('section', {}, a.f, a.n, b.f, b.n, el('div', { class: 'err', 'data-err': 'for_none' }), el('div', { class: 'err', 'data-err': 'against_none' })),
-          submitBtn(null, () => stepPost({ evidence_for: a.n.checked() ? '' : a.f.input.value, for_none: a.n.checked(), evidence_against: b.n.checked() ? '' : b.f.input.value, against_none: b.n.checked() })));
-        break;
-      }
-      case 'S8': {
-        const pair = (key, noneKey, label) => {
-          const f = textField(key, label, [2, 1000]);
-          const n = noneCheck(noneKey, S.none_label, (on) => { f.input.disabled = on; if (on) f.input.value = ''; });
-          return { f, n };
-        };
-        const cm = pair('common', 'common_none', S.common_label), df = pair('difference', 'difference_none', S.difference_label);
-        let prev = null;
-        const mod = textField('modified_text', S.modified_label, [2, 1000]);
-        mod.hidden = true;
-        const verdict = radios('verdict', Object.entries(S.verdict_options), { onchange: (val) => {
-          track(prev ? 'verdict_change' : 'verdict_select', prev ? { from: prev, to: val } : { verdict: val });
-          prev = val; mod.hidden = val !== 'modify';
-        } });
-        const reason = textField('reason', S.reason_label, [2, 2000]);
-        const ev = c.evidence;
-        $app.replaceChildren(el('h1', { text: S.title }),
-          el('section', {}, el('label', { text: S.target_label }), el('div', { class: 'quote', 'data-testid': 'target-text', text: c.target_text }),
-            el('label', { text: S.thought_label }), el('div', { class: 'quote', text: c.automatic_thought }),
-            el('label', { text: S.evidence_label }),
-            el('div', { class: 'quote', text: ev.for_none ? c.evidence_none_label : ev.evidence_for }),
-            el('div', { class: 'quote', text: ev.against_none ? c.evidence_none_label : ev.evidence_against })),
-          el('section', {}, cm.f, cm.n, df.f, df.n, el('div', { class: 'err', 'data-err': 'common_none' }), el('div', { class: 'err', 'data-err': 'difference_none' })),
-          el('section', {}, el('label', { text: S.verdict_label }), verdict, mod, reason),
-          submitBtn(null, () => stepPost({
-            common: cm.n.checked() ? '' : cm.f.input.value, common_none: cm.n.checked(),
-            difference: df.n.checked() ? '' : df.f.input.value, difference_none: df.n.checked(),
-            verdict: verdict.value(), reason: reason.input.value, modified_text: verdict.value() === 'modify' ? mod.input.value : null,
-          })));
-        break;
-      }
-      case 'S9': {
-        const belief = numberField('belief_post', S.belief_label);
-        const vp = textField('view_post', S.view_label, [2, 2000]);
-        $app.replaceChildren(el('h1', { text: S.title }), el('p', { text: S.intro }),
-          el('section', {}, el('label', { text: S.situation_label }), el('div', { class: 'quote', text: c.situation }),
-            el('label', { text: S.thought_label }), el('div', { class: 'quote', text: c.automatic_thought })),
-          el('section', {}, belief, vp),
-          submitBtn(null, () => stepPost({ belief_post: belief.value(), view_post: vp.input.value })));
-        break;
-      }
-      case 'S10': {
-        const groups = c.items.map((it) => {
-          const g = radios(it.id, [1, 2, 3, 4, 5].map((n) => [String(n), `${n} ${t(S.scale[String(n)])}`]));
-          return { id: it.id, g, node: el('div', { class: 'likert', 'data-item': it.id }, el('p', { text: it.text }), g) };
-        });
-        $app.replaceChildren(el('h1', { text: S.title }), el('p', { text: S.intro }), el('section', {}, ...groups.map((x) => x.node)),
-          submitBtn(null, () => {
-            const data = {};
-            for (const x of groups) { const v2 = x.g.value(); data[x.id] = v2 === null ? null : Number(v2); }
-            return stepPost(data);
-          }));
-        break;
-      }
-      default:
-        $app.replaceChildren(el('p', { text: pub.common.conflict }));
+function renderS3() {
+  const s = T.S3;
+  const err = h('div', { class: 'error', role: 'alert' });
+  const buttons = view.choices.map((c) => h('button', { type: 'button', class: 'choice' }, c.text));
+  view.choices.forEach((c, i) => buttons[i].addEventListener('click', async () => {
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      await step('dialogue', { turn: view.turn, choice_id: c.id });
+    } catch (e) {
+      if (e.status === 409) return reload();
+      err.textContent = e.message;
+      buttons.forEach((b) => { b.disabled = false; });
     }
-  }
+  }));
+  app.replaceChildren(
+    h('h1', {}, fill(s.title)),
+    chatHistory(),
+    h('p', { class: 'q' }, fill(s.choose), ' ', h('span', { class: 'muted' }, fill(s.turn, { turn: view.turn }))),
+    h('div', { class: 'choices' }, buttons), err,
+  );
+  buttons[0]?.scrollIntoView({ block: 'end' });
+}
 
-  /* ---------- S11 ---------- */
-  function counselling() { return el('section', {}, el('p', { 'data-testid': 'counselling', text: pub.S11.counselling })); }
-  function resetButton() {
-    return el('button', { type: 'button', 'data-testid': 'reset', text: pub.S11.next_participant, onclick: () => { store.clear(); location.replace('/'); } });
-  }
+function renderS4() {
+  const s = T.S4;
+  const chat = chatHistory();
+  chat.append(charMsg(view.closing));
+  const advice = textField('advice', fill(s.guide), { max: 2000, placeholder: fill(s.placeholder) });
+  const pending = h('div', { class: 'loading', hidden: true }, s.pending);
+  const bar = submitBar(null, async () => {
+    pending.hidden = false;
+    try { await step('advice', { advice: advice.get() }); } finally { pending.hidden = true; }
+  });
+  app.replaceChildren(
+    h('h1', {}, fill(s.title)), chat,
+    view.retry ? h('div', { class: 'card' }, fill(s.retry_guide)) : '',
+    advice.el, pending, bar.el,
+  );
+}
 
-  function renderS11() {
-    const S = pub.S11;
-    const type = view.status;
-    store.set(K.ended, type);
-    if (type === 'withdrawal_pending') {
-      const choice = radios('data_use', [['keep', S.choice_keep], ['delete', S.choice_delete]]);
-      $app.replaceChildren(el('h1', { text: S.title }), el('p', { text: S.withdrawal_pending }), el('section', {}, choice),
-        submitBtn(null, async () => {
-          const v = choice.value();
-          if (!v) return showErrors([{ field: 'data_use' }]);
-          const body = { choice: v };
-          if (v === 'delete') {
-            // 영수증 비밀은 요청 전에 생성·보관 (응답 유실 대비, §10.8 F3)
-            const receipt = store.get(K.receipt) || hex(32);
-            store.set(K.receipt, receipt);
-            body.receipt_secret = receipt;
-          }
-          const r = await api('POST', `/api/sessions/${store.get(K.sid)}/withdrawal-choice`, body);
-          if (r.status === 200) {
-            store.del(K.sid); store.del(K.secret); // 이후 종전 세션 토큰으로 조회하지 않음
-            store.set(K.ended, r.body.status);
-            return v === 'delete' ? renderDeletionStatus() : renderEnded('withdrawn');
-          }
-          if (r.status === 401 && v === 'delete') { store.del(K.sid); store.del(K.secret); return renderDeletionStatus(); }
-          await handle(r);
-        }), counselling());
-      return;
-    }
-    return renderEnded(type);
-  }
+function renderS5() {
+  const s = T.S5;
+  const f = {
+    situation: textField('situation', s.situation_label),
+    emotion: textField('emotion', s.emotion_label, { max: 500 }),
+    automatic_thought: textField('automatic_thought', s.automatic_thought_label, { max: 500 }),
+  };
+  const belief = slider('belief_pre', s.belief_label);
+  const viewPre = textField('view_pre', s.view_label);
+  const bar = submitBar(null, () => step('reflect_pre', {
+    situation: f.situation.get(), emotion: f.emotion.get(), automatic_thought: f.automatic_thought.get(),
+    belief_pre: belief.get(), view_pre: viewPre.get(),
+  }));
+  app.replaceChildren(h('h1', {}, s.title), h('p', {}, fill(s.prompt)), f.situation.el, f.emotion.el, f.automatic_thought.el, belief.el, viewPre.el, bar.el);
+}
 
-  function renderEnded(type) {
-    $bar.hidden = true;
-    const S = pub.S11;
-    const msg = { completed: S.completed, no_experience: S.no_experience, safety_stop: S.safety_stop, withdrawn: S.withdrawn, deletion_pending: S.deletion_received }[type] || pub.common.ended;
-    $app.replaceChildren(el('h1', { text: S.title }), el('p', { 'data-testid': 'end-message', 'data-end': type, text: msg }), counselling(), resetButton());
-  }
+function renderS6() {
+  const s = T.S6;
+  const fid = choice('fidelity', s.fidelity_label, Object.entries(s.fidelity_options).map(([value, label]) => ({ value, label })),
+    { onChange: (v) => logEvent('fidelity_changed', v) });
+  const edited = textField('edited_self', s.edit_label, { max: 1000 });
+  const bar = submitBar(null, () => step('returned', { fidelity: fid.get(), edited_self: edited.get() }));
+  app.replaceChildren(
+    h('h1', {}, s.title),
+    h('div', { class: 'card pair' },
+      h('div', { class: 'said' }, h('div', { class: 'muted' }, fill(s.original_label)), view.advice),
+      h('div', { class: 'returned' }, h('div', { class: 'muted' }, s.self_label), view.self)),
+    fid.el, edited.el, bar.el,
+  );
+}
 
-  async function renderDeletionStatus() {
-    $bar.hidden = true;
-    const S = pub.S11;
-    const receipt = store.get(K.receipt);
-    const status = el('p', { 'data-testid': 'deletion-status', text: S.deletion_received });
-    $app.replaceChildren(el('h1', { text: S.title }), status, counselling(), resetButton());
-    if (!receipt) { status.textContent = S.receipt_lost; return; }
-    const r = await api('POST', '/api/deletions/status', { receipt_secret: receipt }, { auth: false });
-    if (r.status === 200) {
-      status.textContent = r.body.state === 'confirmed' ? S.deletion_confirmed : r.body.state === 'error' ? S.deletion_error : S.deletion_received;
-      status.dataset.state = r.body.state;
-      if (r.body.state === 'pending') pollTimer = setTimeout(renderDeletionStatus, 1500);
-    } else {
-      status.textContent = S.receipt_lost;
-      status.dataset.state = r.status === 410 ? 'expired' : 'unknown';
-    }
-  }
+function renderS7() {
+  const s = T.S7;
+  const forF = textOrNone('evidence_for', 'for_none', s.for_label, s.none_label, 2000);
+  const against = textOrNone('evidence_against', 'against_none', s.against_label, s.none_label, 2000);
+  const bar = submitBar(null, () => step('evidence', { ...forF.get(), ...against.get() }));
+  app.replaceChildren(
+    h('h1', {}, s.title),
+    h('div', { class: 'card' }, h('div', { class: 'muted' }, s.thought_label), h('div', { class: 'thought' }, view.automatic_thought)),
+    forF.el, against.el, bar.el,
+  );
+}
 
-  /* ---------- 시작 ---------- */
-  async function boot() {
-    // 연구자 토큰 회전 복구: #resume=<sid>.<secret> → sessionStorage, 주소에서 즉시 제거
-    const m = /^#resume=([0-9a-f-]{36})\.([0-9a-f]{64})$/.exec(location.hash);
-    if (m) { store.clear(); store.set(K.sid, m[1]); store.set(K.secret, m[2]); history.replaceState(null, '', '/'); }
-    const r = await api('GET', '/api/public/ui', undefined, { auth: false });
-    pub = r.body;
-    if (pub.demo) document.body.prepend(el('div', { class: 'demo-banner', 'data-testid': 'demo-banner', text: '데모 모드 — 실제 연구가 아닙니다. 실명·개인정보·실제 고민을 입력하지 마세요. 변환 문장은 가짜(Mock) 응답입니다.' }));
-    await refresh();
+function renderS8() {
+  const s = T.S8;
+  const common = textOrNone('common', 'common_none', fill(s.common_label), s.none_label, 1000);
+  const diff = textOrNone('difference', 'difference_none', fill(s.difference_label), s.none_label, 1000);
+  const modified = textField('modified_text', s.modified_label, { max: 1000, value: view.target });
+  modified.el.hidden = true;
+  const verdict = choice('verdict', s.verdict_label, Object.entries(s.verdict_options).map(([value, o]) => ({ value, label: o.label, help: o.help })),
+    { onChange: (v) => { modified.el.hidden = v !== 'modify'; logEvent('verdict_changed', v); } });
+  const reason = textField('reason', s.reason_label);
+  const bar = submitBar(null, () => {
+    const v = verdict.get();
+    return step('judge', { ...common.get(), ...diff.get(), verdict: v, reason: reason.get(), modified_text: v === 'modify' ? modified.get() : null });
+  });
+  app.replaceChildren(
+    h('h1', {}, s.title),
+    h('div', { class: 'card pair' },
+      h('div', { class: 'returned' }, h('div', { class: 'muted' }, s.target_label), view.target),
+      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.thought_label), view.automatic_thought)),
+    common.el, diff.el, verdict.el, modified.el, reason.el, bar.el,
+  );
+}
+
+function renderS9() {
+  const s = T.S9;
+  const belief = slider('belief_post', s.belief_label);
+  const viewPost = textField('view_post', s.view_label);
+  const bar = submitBar(null, () => step('reflect_post', { belief_post: belief.get(), view_post: viewPost.get() }));
+  app.replaceChildren(
+    h('h1', {}, s.title), h('p', { class: 'muted' }, s.intro),
+    h('div', { class: 'card' },
+      h('div', { class: 'muted' }, s.situation_label), h('div', { class: 'quote' }, view.situation),
+      h('div', { class: 'muted' }, s.thought_label), h('div', { class: 'quote thought' }, view.automatic_thought)),
+    belief.el, viewPost.el, bar.el,
+  );
+}
+
+function renderS10() {
+  const s = T.S10;
+  const items = view.shown_items.map((q) => [q, choice(q, s.items[q], [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n })), { solid: true, ends: [s.scale_min, s.scale_max] })]);
+  const bar = submitBar(null, () => step('survey', Object.fromEntries(items.map(([q, c]) => [q, c.get()]))));
+  app.replaceChildren(h('h1', {}, s.title), h('p', { class: 'muted' }, s.intro), ...items.map(([, c]) => c.el), bar.el);
+}
+
+function renderS11() {
+  const s = T.S11;
+  storage.clear();
+  const again = h('button', { type: 'button', class: 'secondary' }, s.again);
+  again.addEventListener('click', () => { view = null; lastStage = null; window.history.replaceState(null, '', location.pathname); render(); });
+  app.replaceChildren(h('h1', {}, s.title), h('p', {}, s[view.endType] || s.completed), h('p', { class: 'muted' }, T.common.safety_banner), h('div', { class: 'actions' }, again));
+}
+
+const SCREENS = { S1: renderS1, S2: renderS2, S3: renderS3, S4: renderS4, S5: renderS5, S6: renderS6, S7: renderS7, S8: renderS8, S9: renderS9, S10: renderS10, S11: renderS11 };
+
+function render() {
+  fields.clear();
+  renderTop();
+  const stage = view ? view.stage : 'S1';
+  if (stage !== lastStage) { lastStage = stage; if (view) logEvent('view_stage'); window.scrollTo(0, 0); }
+  SCREENS[stage]();
+}
+
+let CONFIG = null;
+async function boot() {
+  try {
+    CONFIG = await api('/api/config');
+  } catch (e) {
+    app.textContent = `서버에 연결하지 못했어요: ${e.message}`;
+    return;
   }
-  boot();
-})();
+  T = CONFIG.strings;
+  document.getElementById('brand').textContent = T.brand;
+  document.getElementById('mock').hidden = CONFIG.llmMode !== 'mock';
+  const saved = storage.get();
+  if (saved) {
+    try { view = await api(`/api/sessions/${saved}`); logEvent('resume'); } catch { storage.clear(); view = null; }
+  }
+  document.addEventListener('visibilitychange', () => logEvent('visibility', document.visibilityState));
+  render();
+}
+
+boot();

@@ -1,0 +1,5 @@
+{
+  "studyVersion": "draft-0.2",
+  "_note": "scenarios 순서대로 S2에 표시된다. 시나리오 파일은 content/scenarios/<id>/scenario.json",
+  "scenarios": ["A-job", "B-refusal", "C-perfection"]
+}

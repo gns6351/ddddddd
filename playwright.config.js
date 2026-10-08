@@ -1,13 +1,13 @@
-// @ts-check
-const { defineConfig } = require('@playwright/test');
-module.exports = defineConfig({
-  testDir: 'test/e2e',
-  timeout: 60000,
+import fs from 'node:fs';
+import { defineConfig } from '@playwright/test';
+
+const chromium = process.env.PW_CHROMIUM || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
+
+export default defineConfig({
+  testDir: 'tests/e2e',
+  timeout: 60_000,
   workers: 1,
   reporter: [['list']],
-  use: { baseURL: 'http://127.0.0.1:3300', launchOptions: { executablePath: process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium' } },
-  webServer: [
-    { command: 'node test/support/dev-server.js', url: 'http://127.0.0.1:3300/api/scenarios', reuseExistingServer: false, env: { PORT: '3300', E2E_TIMEOUT_MS: '1500' } },
-    { command: 'node tools/demo.js --local --reset --port 3400', url: 'http://127.0.0.1:3400/api/scenarios', reuseExistingServer: false },
-  ],
+  use: { baseURL: 'http://127.0.0.1:3500', launchOptions: { executablePath: chromium } },
+  webServer: { command: 'node tests/e2e/server.js', url: 'http://127.0.0.1:3500/api/config', reuseExistingServer: false },
 });

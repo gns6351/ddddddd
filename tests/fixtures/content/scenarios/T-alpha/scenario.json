@@ -1,0 +1,105 @@
+{
+  "id": "T-alpha",
+  "version": "test-1",
+  "title": "[TEST] 가상 시나리오 A",
+  "name": "[TEST] 가상인물 A",
+  "image": "character.svg",
+  "summary": "[TEST] 가상 고민 A",
+  "automatic_thought": "[TEST] 가상 자동적 사고 A.",
+  "emotion_behavior": "[TEST] 가상 감정 A",
+  "facts": [
+    "[TEST] 가상 사실 A1",
+    "[TEST] 가상 사실 A2",
+    "[TEST] 가상 사실 A3",
+    "[TEST] 가상 사실 A4",
+    "[TEST] 가상 사실 A5"
+  ],
+  "dialogue": {
+    "mode": "script",
+    "intro": "[TEST] 가상 소개 A",
+    "turns": [
+      {
+        "turn": 1,
+        "choices": [
+          {
+            "id": "A1a",
+            "text": "[TEST] 질문 A1a",
+            "reply": "[TEST] 대답 A1a",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "A1b",
+            "text": "[TEST] 질문 A1b",
+            "reply": "[TEST] 대답 A1b",
+            "fact_ids": [
+              1
+            ]
+          },
+          {
+            "id": "A1c",
+            "text": "[TEST] 질문 A1c",
+            "reply": "[TEST] 대답 A1c",
+            "fact_ids": [
+              2
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 2,
+        "choices": [
+          {
+            "id": "A2a",
+            "text": "[TEST] 질문 A2a",
+            "reply": "[TEST] 대답 A2a",
+            "fact_ids": [
+              0
+            ]
+          },
+          {
+            "id": "A2b",
+            "text": "[TEST] 질문 A2b",
+            "reply": "[TEST] 대답 A2b",
+            "fact_ids": [
+              1
+            ]
+          },
+          {
+            "id": "A2c",
+            "text": "[TEST] 질문 A2c",
+            "reply": "[TEST] 대답 A2c",
+            "fact_ids": [
+              2
+            ]
+          }
+        ]
+      },
+      {
+        "turn": 3,
+        "choices": [
+          {
+            "id": "A3a",
+            "text": "[TEST] 질문 A3a",
+            "reply": "[TEST] 대답 A3a [TEST] 가상 자동적 사고 A.",
+            "fact_ids": []
+          },
+          {
+            "id": "A3b",
+            "text": "[TEST] 질문 A3b",
+            "reply": "[TEST] 대답 A3b [TEST] 가상 자동적 사고 A.",
+            "fact_ids": []
+          },
+          {
+            "id": "A3c",
+            "text": "[TEST] 질문 A3c",
+            "reply": "[TEST] 대답 A3c [TEST] 가상 자동적 사고 A.",
+            "fact_ids": []
+          }
+        ]
+      }
+    ],
+    "closing": "[TEST] 마지막 말 A"
+  }
+}
