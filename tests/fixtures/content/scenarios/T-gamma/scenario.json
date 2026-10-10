@@ -3,7 +3,6 @@
   "version": "test-1",
   "title": "[TEST] 가상 시나리오 C",
   "name": "[TEST] 가상인물 C",
-  "image": "character.svg",
   "summary": "[TEST] 가상 고민 C",
   "automatic_thought": "[TEST] 가상 자동적 사고 C.",
   "emotion_behavior": "[TEST] 가상 감정 C",
@@ -27,7 +26,9 @@
             "reply": "[TEST] 대답 C1a",
             "fact_ids": [
               0
-            ]
+            ],
+            "attitude": "empathy",
+            "expression": "hesitant"
           },
           {
             "id": "C1b",
@@ -35,7 +36,9 @@
             "reply": "[TEST] 대답 C1b",
             "fact_ids": [
               1
-            ]
+            ],
+            "attitude": "specify",
+            "expression": "hesitant"
           },
           {
             "id": "C1c",
@@ -43,7 +46,9 @@
             "reply": "[TEST] 대답 C1c",
             "fact_ids": [
               2
-            ]
+            ],
+            "attitude": "explore",
+            "expression": "hesitant"
           }
         ]
       },
@@ -56,7 +61,9 @@
             "reply": "[TEST] 대답 C2a",
             "fact_ids": [
               0
-            ]
+            ],
+            "attitude": "empathy",
+            "expression": "hesitant"
           },
           {
             "id": "C2b",
@@ -64,7 +71,9 @@
             "reply": "[TEST] 대답 C2b",
             "fact_ids": [
               1
-            ]
+            ],
+            "attitude": "specify",
+            "expression": "hesitant"
           },
           {
             "id": "C2c",
@@ -72,8 +81,15 @@
             "reply": "[TEST] 대답 C2c",
             "fact_ids": [
               2
-            ]
+            ],
+            "attitude": "explore",
+            "expression": "hesitant"
           }
+        ],
+        "lead": "[TEST] 공통 대사 C2",
+        "lead_expression": "sad",
+        "lead_fact_ids": [
+          3
         ]
       },
       {
@@ -83,23 +99,55 @@
             "id": "C3a",
             "text": "[TEST] 질문 C3a",
             "reply": "[TEST] 대답 C3a [TEST] 가상 자동적 사고 C.",
-            "fact_ids": []
+            "fact_ids": [],
+            "attitude": "empathy",
+            "expression": "hesitant"
           },
           {
             "id": "C3b",
             "text": "[TEST] 질문 C3b",
             "reply": "[TEST] 대답 C3b [TEST] 가상 자동적 사고 C.",
-            "fact_ids": []
+            "fact_ids": [],
+            "attitude": "specify",
+            "expression": "hesitant"
           },
           {
             "id": "C3c",
             "text": "[TEST] 질문 C3c",
             "reply": "[TEST] 대답 C3c [TEST] 가상 자동적 사고 C.",
-            "fact_ids": []
+            "fact_ids": [],
+            "attitude": "explore",
+            "expression": "hesitant"
           }
-        ]
+        ],
+        "lead": "[TEST] 공통 대사 C3",
+        "lead_expression": "sad",
+        "lead_fact_ids": []
       }
     ],
-    "closing": "[TEST] 마지막 말 C"
-  }
+    "closing": "[TEST] 마지막 말 C",
+    "intro_expression": "anxious",
+    "closing_expression": "hesitant",
+    "followups": [
+      {
+        "text": "[TEST] 후속 고민 C1",
+        "expression": "anxious"
+      },
+      {
+        "text": "[TEST] 후속 고민 C2",
+        "expression": "sad"
+      }
+    ],
+    "final_reply": {
+      "text": "[TEST] 마무리 C",
+      "expression": "softened"
+    }
+  },
+  "expressions": [
+    "neutral",
+    "anxious",
+    "sad",
+    "hesitant",
+    "softened"
+  ]
 }

@@ -34,7 +34,9 @@ export function flattenSession(s, rules) {
     character_id: val(s.pick.characterId),
     relevance: val(s.pick.relevance),
     dialogue_choices: s.dialogue.map((d) => d.choiceId).join(';'),
+    dialogue_attitudes: s.dialogue.map((d) => d.attitude || '').join(';'),
     fact_ids: [...new Set(s.dialogue.flatMap((d) => d.factIds || []))].join(';'),
+    advice_rounds_planned: s.adviceRounds ?? '',
     advice_attempts: s.advice.attempts.length,
     advice_1: val(first?.text),
     outcome_1: val(first?.outcome),
@@ -73,6 +75,7 @@ export function flattenSession(s, rules) {
     belief_post: val(s.reflectPost?.belief_post),
     belief_change: s.reflectPre && s.reflectPost ? s.reflectPost.belief_post - s.reflectPre.belief_pre : '',
   };
+  for (let i = 0; i < 6; i += 1) row[`advice_r${i + 1}`] = val(s.advice.rounds?.[i]?.text);
   for (const q of LIKERT) row[q] = s.survey ? (s.survey.shown_items.includes(q) ? s.survey[q] : 'NA') : '';
   const secs = stepSeconds(s);
   for (const st of ['S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10']) row[`sec_${st}`] = secs[st] ?? '';

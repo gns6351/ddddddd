@@ -1,6 +1,6 @@
 {
   "id": "A-job",
-  "version": "draft-0.1",
+  "version": "draft-0.2",
   "title": "취업과 실패",
   "name": "민서",
   "summary": "탈락이 두려워 지원을 미루고 있어요",
@@ -17,95 +17,141 @@
   ],
   "dialogue": {
     "mode": "script",
-    "intro": "안녕하세요. 저는 취업 준비를 하고 있는데요… 요즘 지원서를 내는 게 너무 어려워요. 이야기를 좀 들어 주실래요?",
+    "intro": "안녕하세요. 저 요즘 취업 준비 중인데… 지원서를 열어 놓고 그냥 닫아요. 몇 번째인지 모르겠어요.",
+    "intro_expression": "anxious",
     "turns": [
       {
         "turn": 1,
         "choices": [
           {
             "id": "A1a",
-            "text": "요즘 어떤 상황이에요?",
-            "reply": "취업 준비 중이에요. 이번 달에 마감되는 공고가 세 개나 있는데… 저장만 해 두고 아직 하나도 지원을 못 했어요.",
-            "fact_ids": [
-              2
-            ]
-          },
-          {
-            "id": "A1b",
-            "text": "지금 기분이 어때요?",
-            "reply": "솔직히 많이 불안해요. 지원서를 쓰려고만 하면 불안해져서, 자꾸 다른 일부터 하게 돼요.",
+            "attitude": "empathy",
+            "text": "열어 놓고 닫을 때 어떤 마음이 들어요?",
+            "reply": "불안해요. 지원서를 쓰려고만 하면 가슴이 두근거려서, 자꾸 다른 일부터 하게 돼요.",
+            "expression": "anxious",
             "fact_ids": [
               3
             ]
           },
           {
-            "id": "A1c",
-            "text": "최근에 무슨 일이 있었어요?",
-            "reply": "같이 준비하던 친구가 여러 곳에 지원했는데, 그중 한 곳에서 면접 연락을 받았대요. 저는 아직 시작도 못 했는데… 마음이 복잡했어요.",
+            "id": "A1b",
+            "attitude": "specify",
+            "text": "어디까지 쓰다가 멈추게 돼요?",
+            "reply": "이름이랑 학력까지만 쓰고 멈춰요. 이번 달 마감인 공고가 세 개인데, 저장만 해 두고 하나도 못 냈어요.",
+            "expression": "hesitant",
             "fact_ids": [
-              4
+              2
+            ]
+          },
+          {
+            "id": "A1c",
+            "attitude": "explore",
+            "text": "그렇게 된 지 얼마나 됐어요?",
+            "reply": "작년 하반기에 서류에서 두 번 떨어지고 나서부터예요. 그 뒤로 지원 버튼을 누르기가 어려워졌어요.",
+            "expression": "sad",
+            "fact_ids": [
+              0
             ]
           }
         ]
       },
       {
         "turn": 2,
+        "lead": "그런데 같이 준비하던 친구는 벌써 면접 연락을 받았대요.",
+        "lead_expression": "sad",
+        "lead_fact_ids": [
+          4
+        ],
         "choices": [
           {
             "id": "A2a",
-            "text": "왜 지원을 미루게 되는 것 같아요?",
-            "reply": "작년 하반기에 서류에서 두 번 떨어졌거든요. 또 그럴까 봐 겁이 나서 손이 안 가요.",
+            "attitude": "empathy",
+            "text": "그 소식을 들으니 마음이 복잡했겠어요.",
+            "reply": "네… 축하는 했는데 저만 뒤처진 것 같았어요. 집에서는 일단 넣어 보라고 하는데, 그 말도 부담이고요.",
+            "expression": "sad",
+            "fact_ids": [
+              6
+            ]
+          },
+          {
+            "id": "A2b",
+            "attitude": "specify",
+            "text": "그 소식을 듣고 나서 지원서 앞에서 뭐가 제일 걸려요?",
+            "reply": "또 떨어지면 어쩌나 싶어요. 작년에 두 번 떨어진 게 자꾸 생각나요.",
+            "expression": "anxious",
             "fact_ids": [
               0
             ]
           },
           {
-            "id": "A2b",
-            "text": "예전에 잘 해냈던 경험도 있어요?",
-            "reply": "과제 평가는 좋은 편이었어요. 인턴 때 맡은 일로 팀장님께 칭찬받은 적도 있고요. 그런데… 그게 취업이랑은 다른 얘기 같아요.",
+            "id": "A2c",
+            "attitude": "explore",
+            "text": "예전에 준비하면서 잘됐던 일도 있었어요?",
+            "reply": "과제 평가는 좋은 편이었고, 인턴 때 팀장님께 칭찬받은 적도 있어요. 그런데 그건 취업이랑은 다른 얘기 같아요.",
+            "expression": "hesitant",
             "fact_ids": [
               1,
               5
-            ]
-          },
-          {
-            "id": "A2c",
-            "text": "주변 사람들은 뭐라고 해요?",
-            "reply": "가족들은 일단 넣어 보라고 해요. 그 말이 맞는 건 알겠는데… 선뜻 손이 안 가요.",
-            "fact_ids": [
-              6
             ]
           }
         ]
       },
       {
         "turn": 3,
+        "lead": "그래서인지 지원서를 쓰려고 하면 머릿속에서 같은 말이 맴돌아요.",
+        "lead_expression": "anxious",
+        "lead_fact_ids": [],
         "choices": [
           {
             "id": "A3a",
-            "text": "지원하려고 할 때 어떤 생각이 들어요?",
-            "reply": "지원서를 쓰려고 하면 이런 생각이 들어요. '떨어지면 나는 능력이 없는 사람이야.' 그러면 그냥 창을 닫게 돼요.",
+            "attitude": "empathy",
+            "text": "그 말이 맴돌면 많이 괴롭겠어요.",
+            "reply": "네… '떨어지면 나는 능력이 없는 사람이야.' 그 말이 들리면 그냥 창을 닫아요.",
+            "expression": "sad",
             "fact_ids": []
           },
           {
             "id": "A3b",
-            "text": "가장 걱정되는 게 뭐예요?",
-            "reply": "또 떨어지는 게 제일 무서워요. 떨어지면 나는 능력이 없는 사람이야… 그렇게 결론이 날 것 같아서요.",
+            "attitude": "specify",
+            "text": "어떤 말이 맴도는지 들려줄 수 있어요?",
+            "reply": "'떨어지면 나는 능력이 없는 사람이야.' 이 말이요.",
+            "expression": "anxious",
             "fact_ids": []
           },
           {
             "id": "A3c",
-            "text": "어떻게 되면 좋겠어요?",
-            "reply": "저도 마음 편하게 지원해 보고 싶어요. 그런데 자꾸 '떨어지면 나는 능력이 없는 사람이야'라는 생각이 먼저 들어요.",
+            "attitude": "explore",
+            "text": "그 말은 언제부터 들리기 시작했어요?",
+            "reply": "서류에서 떨어진 다음부터인 것 같아요. 떨어지면 나는 능력이 없는 사람이야… 그렇게 결론이 날까 봐 무서워요.",
+            "expression": "anxious",
             "fact_ids": []
           }
         ]
       }
     ],
-    "closing": "제가 어떻게 생각하면 좋을까요?"
+    "closing": "제가 어떻게 생각하면 좋을까요?",
+    "closing_expression": "hesitant",
+    "_note_followups": "조언 회차 사이 캐릭터의 고정 후속 고민(조언 내용과 무관하게 성립, 같은 자동적 사고에서 파생). 마지막 회차 뒤에는 final_reply(중립). 조언 뒤 반응에는 웃는 표정을 쓰지 않는다.",
+    "followups": [
+      {
+        "text": "그렇게 생각해볼 수도 있겠네요… 근데 또 떨어지면 진짜 끝일 것 같아서요.",
+        "expression": "anxious"
+      },
+      {
+        "text": "음… 그래도 주변 사람들은 다 잘되는 것 같아요.",
+        "expression": "sad"
+      }
+    ],
+    "final_reply": {
+      "text": "조금은 다르게 생각해볼게요.",
+      "expression": "softened"
+    }
   },
-  "persona": {
-    "prompt": "persona@v1",
-    "style": "짧고 망설이는 말투"
-  }
+  "expressions": [
+    "neutral",
+    "anxious",
+    "sad",
+    "hesitant",
+    "softened"
+  ]
 }

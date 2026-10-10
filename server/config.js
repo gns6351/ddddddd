@@ -23,7 +23,7 @@ export function loadSettings(overrides = {}) {
     model: env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     thinking: env.GEMINI_THINKING_LEVEL ?? 'low',
     timeoutMs: Number(env.LLM_TIMEOUT_MS || 10000), // 명세: try당 10초, 최대 2회
-    transformPrompt: env.TRANSFORM_PROMPT || 'v2',
+    transformPrompt: env.TRANSFORM_PROMPT || 'v3',
     // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)
     phase: oneOf(env.STUDY_PHASE, ['pilot', 'main'], 'pilot'),
     // 연구자 화면 비밀번호. 비워 두면 서버 PC(localhost)에서만 비밀번호 없이 열림
@@ -51,12 +51,13 @@ export function loadContent(contentDir) {
   const safety = readJson(path.join(contentDir, 'safety', 'rules.json'));
   const scenarios = study.data.scenarios.map((id) => readJson(path.join(contentDir, 'scenarios', id, 'scenario.json')));
   const hash = sha([study.raw, strings.raw, safety.raw, ...scenarios.map((x) => x.raw)].join('\n'));
+  const list = scenarios.map((x, i) => ({ ...x.data, faces: fs.existsSync(path.join(contentDir, 'scenarios', study.data.scenarios[i], 'faces')) }));
   return {
     study: study.data,
     strings: strings.data,
     safety: safety.data,
-    scenarios: scenarios.map((x) => x.data),
-    scenario: (id) => scenarios.map((x) => x.data).find((x) => x.id === id) || null,
+    scenarios: list,
+    scenario: (id) => list.find((x) => x.id === id) || null,
     hash,
   };
 }

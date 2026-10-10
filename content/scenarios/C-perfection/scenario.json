@@ -1,6 +1,6 @@
 {
   "id": "C-perfection",
-  "version": "draft-0.1",
+  "version": "draft-0.2",
   "title": "완벽주의와 미루기",
   "name": "서윤",
   "summary": "완벽하게 하려다 과제를 시작하지 못하고 있어요",
@@ -17,95 +17,141 @@
   ],
   "dialogue": {
     "mode": "script",
-    "intro": "안녕하세요. 과제를 해야 하는데… 도무지 시작을 못 하겠어요. 제 얘기 좀 들어 주실래요?",
+    "intro": "안녕하세요. 과제 파일을 열어 놓고 첫 문장만 계속 지웠다 썼다 하고 있어요.",
+    "intro_expression": "anxious",
     "turns": [
       {
         "turn": 1,
         "choices": [
           {
             "id": "C1a",
-            "text": "요즘 어떤 상황이에요?",
-            "reply": "조별 과제 보고서에서 제가 맡은 부분이 있는데, 다음 주 금요일이 마감이에요. 그런데 아직 한 줄도 못 썼어요.",
-            "fact_ids": [
-              0
-            ]
-          },
-          {
-            "id": "C1b",
-            "text": "지금 기분이 어때요?",
-            "reply": "과제 생각만 하면 가슴이 답답해요. 압박감이 너무 커서 아무것도 손에 안 잡혀요.",
+            "attitude": "empathy",
+            "text": "지웠다 썼다 할 때 마음이 어때요?",
+            "reply": "가슴이 답답해요. 압박감이 너무 커서 아무것도 손에 안 잡혀요.",
+            "expression": "anxious",
             "fact_ids": [
               5
             ]
           },
           {
-            "id": "C1c",
-            "text": "최근에 무슨 일이 있었어요?",
-            "reply": "조원들이 진행 상황을 묻는 메시지를 보냈는데, 아직 답을 못 했어요. 보여 줄 게 없어서요.",
+            "id": "C1b",
+            "attitude": "specify",
+            "text": "어떤 과제인지, 마감이 언제인지 알려 줄래요?",
+            "reply": "조별 보고서에서 제가 맡은 부분이에요. 다음 주 금요일 마감인데 아직 한 줄도 못 썼어요.",
+            "expression": "hesitant",
             "fact_ids": [
-              4
+              0
+            ]
+          },
+          {
+            "id": "C1c",
+            "attitude": "explore",
+            "text": "이렇게 된 지 얼마나 됐어요?",
+            "reply": "자료 조사만 벌써 2주째예요. 첫 문장을 써 봤는데 마음에 안 들어서 몇 번이나 지웠어요.",
+            "expression": "sad",
+            "fact_ids": [
+              1,
+              2
             ]
           }
         ]
       },
       {
         "turn": 2,
+        "lead": "조원들한테 진행 상황을 묻는 메시지도 왔는데, 아직 답을 못 했어요.",
+        "lead_expression": "sad",
+        "lead_fact_ids": [
+          4
+        ],
         "choices": [
           {
             "id": "C2a",
-            "text": "왜 시작이 어려운 것 같아요?",
-            "reply": "자료 조사만 벌써 2주째예요. 첫 문장을 써 봤는데 마음에 안 들어서 몇 번이나 지웠어요.",
+            "attitude": "empathy",
+            "text": "답을 못 하고 있으니 마음이 계속 쓰이겠어요.",
+            "reply": "네… 보여 줄 게 없어서요. 교수님이 초안을 먼저 보여 주면 피드백을 주신다는데, 덜 된 걸 보여 드리는 것도 망설여져요.",
+            "expression": "sad",
             "fact_ids": [
-              1,
-              2
+              6
             ]
           },
           {
             "id": "C2b",
-            "text": "예전에 비슷한 경험이 있었어요?",
-            "reply": "지난 학기에 서둘러 낸 과제가 있었는데, 생각보다 점수가 좋았어요. 그래도… 그건 운이 좋았던 것 같아요.",
+            "attitude": "specify",
+            "text": "답장을 하려면 뭐가 있어야 할 것 같아요?",
+            "reply": "적어도 완성된 부분이 있어야 답할 수 있을 것 같아요. 마감은 다음 주 금요일인데 아직 한 줄도 없어요.",
+            "expression": "hesitant",
             "fact_ids": [
-              3
+              0
             ]
           },
           {
             "id": "C2c",
-            "text": "주변 사람들은 뭐라고 해요?",
-            "reply": "교수님은 초안을 먼저 보여 주면 피드백을 주시겠대요. 그런데 덜 된 걸 보여 드리는 게 망설여져요.",
+            "attitude": "explore",
+            "text": "예전에 비슷한 과제는 어떻게 했어요?",
+            "reply": "지난 학기엔 서둘러 낸 과제가 있었는데 생각보다 점수가 좋았어요. 그래도… 그건 운이 좋았던 것 같아요.",
+            "expression": "hesitant",
             "fact_ids": [
-              6
+              3
             ]
           }
         ]
       },
       {
         "turn": 3,
+        "lead": "책상에 앉으면 늘 같은 생각이 먼저 들어요.",
+        "lead_expression": "anxious",
+        "lead_fact_ids": [],
         "choices": [
           {
             "id": "C3a",
-            "text": "과제를 시작하려고 할 때 어떤 생각이 들어요?",
-            "reply": "책상에 앉으면 '완벽하게 못 하면 시작할 의미가 없어.' 이런 생각이 들어요. 그러면 다시 자료만 찾게 돼요.",
+            "attitude": "empathy",
+            "text": "그 생각이 들면 앉아 있기도 힘들겠어요.",
+            "reply": "네… '완벽하게 못 하면 시작할 의미가 없어.' 그 생각이 들면 다시 자료만 찾게 돼요.",
+            "expression": "sad",
             "fact_ids": []
           },
           {
             "id": "C3b",
-            "text": "가장 걱정되는 게 뭐예요?",
-            "reply": "어설픈 결과물을 내는 게 제일 걱정돼요. 완벽하게 못 하면 시작할 의미가 없어… 계속 그렇게 느껴져요.",
+            "attitude": "specify",
+            "text": "어떤 생각인지 말해 줄 수 있어요?",
+            "reply": "'완벽하게 못 하면 시작할 의미가 없어.' 이 생각이요.",
+            "expression": "anxious",
             "fact_ids": []
           },
           {
             "id": "C3c",
-            "text": "어떻게 되면 좋겠어요?",
-            "reply": "저도 일단 시작은 해 보고 싶어요. 그런데 '완벽하게 못 하면 시작할 의미가 없어'라는 생각이 발목을 잡아요.",
+            "attitude": "explore",
+            "text": "그 생각은 언제부터 들었어요?",
+            "reply": "꽤 오래된 것 같아요. 무언가를 시작할 때마다 완벽하게 못 하면 시작할 의미가 없어… 그 생각이 먼저 와요.",
+            "expression": "hesitant",
             "fact_ids": []
           }
         ]
       }
     ],
-    "closing": "제가 어떻게 생각하면 좋을까요?"
+    "closing": "제가 어떻게 생각하면 좋을까요?",
+    "closing_expression": "hesitant",
+    "_note_followups": "조언 회차 사이 캐릭터의 고정 후속 고민(조언 내용과 무관하게 성립, 같은 자동적 사고에서 파생). 마지막 회차 뒤에는 final_reply(중립). 조언 뒤 반응에는 웃는 표정을 쓰지 않는다.",
+    "followups": [
+      {
+        "text": "그렇게 생각해볼 수도 있겠네요… 근데 어설프게 내면 조원들이 실망할 것 같아요.",
+        "expression": "anxious"
+      },
+      {
+        "text": "음… 그래도 시작했다가 별로면 그게 더 힘들 것 같아요.",
+        "expression": "hesitant"
+      }
+    ],
+    "final_reply": {
+      "text": "조금은 다르게 생각해볼게요.",
+      "expression": "softened"
+    }
   },
-  "persona": {
-    "prompt": "persona@v1",
-    "style": "조급하고 스스로를 다그치는 말투"
-  }
+  "expressions": [
+    "neutral",
+    "anxious",
+    "sad",
+    "hesitant",
+    "softened"
+  ]
 }

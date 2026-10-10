@@ -94,7 +94,8 @@ export function newSession({ participantId, settings, content, prompt }) {
     stageTimes: { S1: at, S2: at },
     pick: { checks: [], characterId: null, relevance: null },
     dialogue: [],
-    advice: { attempts: [], outcome: null, final: null },
+    adviceRounds: Math.min(5, Math.max(1, Number(content.study.adviceRounds) || 1)),
+    advice: { rounds: [], attempts: [], outcome: null, final: null },
     reflectPre: null,
     returned: null,
     evidence: null,
@@ -169,10 +170,13 @@ export function doDialogue(s, d, content) {
   const sc = content.scenario(s.pick.characterId);
   const turn = s.dialogue.length + 1;
   if (d.turn !== turn) throw new FlowError('이미 지난 질문이에요. 화면을 다시 불러올게요.', 409);
-  const choice = sc.dialogue.turns[turn - 1].choices.find((x) => x.id === d.choice_id);
+  const t = sc.dialogue.turns[turn - 1];
+  const choice = t.choices.find((x) => x.id === d.choice_id);
   if (!choice) throw new FlowError('질문을 하나 골라 주세요', 422, { field: 'choice_id', reason: 'required' });
-  s.dialogue.push({ turn, choiceId: choice.id, question: choice.text, reply: choice.reply, factIds: choice.fact_ids || [], at: now() });
-  addEvent(s, 'choice_select', { turn, choice_id: choice.id, fact_ids: choice.fact_ids || [] });
+  // 노출 사실 = 그 턴의 공통 대사(lead) 사실 + 고른 선택지의 사실
+  const factIds = [...new Set([...(t.lead_fact_ids || []), ...(choice.fact_ids || [])])];
+  s.dialogue.push({ turn, choiceId: choice.id, attitude: choice.attitude || null, question: choice.text, reply: choice.reply, factIds, at: now() });
+  addEvent(s, 'choice_select', { turn, choice_id: choice.id, attitude: choice.attitude || null, fact_ids: factIds });
   if (turn === sc.dialogue.turns.length) moveTo(s, 'S4');
 }
 
@@ -180,18 +184,57 @@ export function validateAdvice(d) {
   return checker('S4').text('advice', d.advice);
 }
 
-// 변환 결과 기록. not_advice는 첫 번째에 한해 다시 쓰게 한다.
-export function applyTransform(s, advice, result) {
+// ---- S4: 정해진 횟수(adviceRounds)만큼 조언하고, 마지막에 합쳐서 한 번 변환한다 ----
+// 회차 사이 캐릭터 대사는 조언 내용과 무관한 고정 후속 고민(followups), 마지막은 중립 마무리(final_reply).
+export function adviceState(s) {
+  s.advice.rounds ||= []; // 이 기능 전에 만든 세션은 회차 기록이 없다(1회로 취급)
+  const R = s.adviceRounds || 1;
+  const n = s.advice.rounds.length;
+  const retry = s.advice.attempts.length === 1 && s.advice.attempts[0].outcome === 'not_advice';
+  return { R, n, retry, final: retry || (s.advice.attempts.length === 0 && n >= R - 1) };
+}
+
+function replyFor(sc, roundNo, final) {
+  const fu = sc.dialogue.followups || [];
+  const r = final || !fu.length ? sc.dialogue.final_reply : fu[Math.min(roundNo, fu.length) - 1];
+  return r ? { text: r.text, expression: r.expression || 'neutral' } : null;
+}
+
+// 합친 조언: 저장·코딩용은 줄바꿈으로, AI 입력은 번호를 붙여서
+export const combinedAdvice = (texts) => texts.join('\n');
+export const numberedAdvice = (texts) => (texts.length > 1 ? texts.map((t, i) => `${i + 1}) ${t}`).join('\n') : texts[0]);
+
+// 마지막이 아닌 회차: 기록하고 캐릭터의 고정 후속 고민을 붙인다(AI 호출 없음)
+export function addAdviceRound(s, text, content) {
   requireStage(s, 'S4');
+  const st = adviceState(s);
+  if (st.final) throw new FlowError('마지막 조언은 변환과 함께 처리돼요', 409);
+  const sc = content.scenario(s.pick.characterId);
+  const reply = replyFor(sc, st.n + 1, false);
+  s.advice.rounds.push({ n: st.n + 1, text, at: now(), reply });
+  addEvent(s, 'advice_submit', { round: st.n + 1, length: len(text) });
+  return reply;
+}
+
+// 변환 결과 기록(마지막 회차 또는 다시 쓰기). not_advice는 첫 번째에 한해 다시 쓰게 한다.
+export function applyTransform(s, roundText, result, content, expectRounds) {
+  requireStage(s, 'S4');
+  if (s.advice.rounds.length !== expectRounds) throw new FlowError('이미 처리된 조언이에요. 화면을 다시 불러올게요.', 409);
+  const st = adviceState(s);
+  const sc = content.scenario(s.pick.characterId);
+  const reply = replyFor(sc, st.n + 1, true);
+  s.advice.rounds.push({ n: st.n + 1, text: roundText, at: now(), retry: st.retry, reply });
   const attempt = s.advice.attempts.length + 1;
-  const rec = { n: attempt, text: advice, at: now(), ...result };
+  const advice = combinedAdvice(s.advice.rounds.map((r) => r.text));
+  const rec = { n: attempt, text: advice, rounds: s.advice.rounds.length, at: now(), ...result };
   s.advice.attempts.push(rec);
-  addEvent(s, 'advice_submit', { attempt, length: len(advice) });
+  addEvent(s, 'advice_submit', { round: st.n + 1, attempt, length: len(roundText), retry: st.retry });
   addEvent(s, 'transform_result', { attempt, outcome: result.outcome, safety_source: result.safetySource || null, tries: result.calls?.length || 0 });
-  if (result.outcome === 'not_advice' && attempt === 1) { addEvent(s, 'advice_retry_prompt', { attempt }); return; }
+  if (result.outcome === 'not_advice' && attempt === 1) { addEvent(s, 'advice_retry_prompt', { attempt }); return reply; }
   s.advice.outcome = result.outcome;
   s.advice.final = attempt;
   moveTo(s, 'S5');
+  return reply;
 }
 
 export function doReflectPre(s, d) {
@@ -302,31 +345,46 @@ export function doEvent(s, d) {
 }
 
 // ---- 참가자 화면에 줄 정보 ----
-const charInfo = (sc) => (sc ? { id: sc.id, name: sc.name, title: sc.title, summary: sc.summary } : null);
+const charInfo = (sc) => (sc ? { id: sc.id, name: sc.name, title: sc.title, summary: sc.summary, faces: !!sc.faces } : null);
 
 export function publicView(s, content) {
   const sc = content.scenario(s.pick.characterId);
   const v = { id: s.id, participantId: s.participantId, stage: s.stage, endType: s.endType, character: charInfo(sc), llmMode: s.llmMode };
-  const history = () => s.dialogue.map((x) => ({ question: x.question, reply: x.reply }));
+  // 대화 기록: 턴마다 캐릭터의 공통 대사(lead) → 참가자가 고른 말 → 캐릭터 대답, 각 대사의 표정 포함
+  const history = () => s.dialogue.map((x) => {
+    const t = sc.dialogue.turns[x.turn - 1];
+    const c = t.choices.find((k) => k.id === x.choiceId);
+    return { lead: t.lead || null, leadExpression: t.lead_expression || null, question: x.question, reply: x.reply, expression: c?.expression || null };
+  });
+  const intro = () => { v.intro = sc.dialogue.intro; v.introExpression = sc.dialogue.intro_expression || null; };
   switch (s.stage) {
     case 'S2':
       v.characters = content.scenarios.map((x) => ({ ...charInfo(x), checked: s.pick.checks.some((k) => k.characterId === x.id) }));
       break;
     case 'S3': {
       const turn = s.dialogue.length + 1;
-      v.intro = sc.dialogue.intro;
+      const t = sc.dialogue.turns[turn - 1];
+      intro();
       v.history = history();
       v.turn = turn;
       v.turns = sc.dialogue.turns.length;
-      v.choices = sc.dialogue.turns[turn - 1].choices.map((x) => ({ id: x.id, text: x.text }));
+      v.lead = t.lead || null;
+      v.leadExpression = t.lead_expression || null;
+      v.choices = t.choices.map((x) => ({ id: x.id, text: x.text })); // 태도 유형은 보내지 않는다
       break;
     }
-    case 'S4':
-      v.intro = sc.dialogue.intro;
+    case 'S4': {
+      const st = adviceState(s);
+      intro();
       v.history = history();
       v.closing = sc.dialogue.closing;
-      v.retry = s.advice.attempts.length === 1;
+      v.closingExpression = sc.dialogue.closing_expression || null;
+      v.rounds = s.advice.rounds.map((r) => ({ advice: r.text, reply: r.reply?.text || null, expression: r.reply?.expression || null }));
+      v.round = Math.min(st.n + 1, st.R);
+      v.roundsTotal = st.R;
+      v.retry = st.retry;
       break;
+    }
     case 'S6': {
       const fa = finalAttempt(s);
       v.advice = fa.text;

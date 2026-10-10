@@ -47,7 +47,7 @@ body {
 }
 .brand { font-weight: 700; }
 .steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 0; flex-wrap: wrap; flex: 1; }
-.steps li { font-size: 12px; color: var(--muted); padding: 2px 8px; border-radius: 99px; }
+.steps li { font-size: 13px; color: var(--muted); padding: 2px 8px; border-radius: 99px; }
 .steps li.on { background: var(--accent); color: var(--accent-ink); }
 .steps li.past { color: var(--accent); }
 .mockbar { background: var(--char); color: var(--muted); font-size: 13px; text-align: center; padding: 4px 16px; }
@@ -58,6 +58,11 @@ p { margin: 8px 0; }
 ul.notices { padding-left: 20px; margin: 8px 0; }
 ul.notices li { margin: 6px 0; }
 .muted { color: var(--muted); font-size: 14px; }
+.task { font-weight: 600; margin: 4px 0 12px; }
+.hint { color: var(--muted); font-size: 14px; margin: -4px 0 8px; }
+.reassure { color: var(--muted); font-size: 14px; text-align: center; margin-top: 24px; }
+ol.flow { padding-left: 22px; margin: 8px 0 12px; }
+ol.flow li { margin: 4px 0; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 12px 0; }
 
 .field { margin: 20px 0 0; }
@@ -117,6 +122,10 @@ button.choice:hover { border-color: var(--accent); }
 /* 채팅 */
 .chat { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
 .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; }
+.row-char { display: flex; gap: 8px; align-items: flex-end; align-self: flex-start; max-width: 92%; }
+.row-char .msg { max-width: 100%; }
+.avatar { width: 48px; height: 48px; border-radius: 12px; flex: none; }
+.avatar.big { width: 64px; height: 64px; }
 .msg.character { background: var(--char); align-self: flex-start; border-bottom-left-radius: 4px; }
 .msg.player { background: var(--accent); color: var(--accent-ink); align-self: flex-end; border-bottom-right-radius: 4px; }
 .who { font-size: 12px; color: var(--muted); margin-bottom: 2px; }

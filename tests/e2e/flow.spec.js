@@ -28,16 +28,31 @@ test('참가자 화면 S1→S11, 대시보드 통계·세션 상세', async ({ p
     await expect(page.locator('.msg.player')).toHaveCount(i);
     await page.locator('button.choice').first().click();
   }
-  // S4
+  // S4: 조언 3회, 회차마다 캐릭터의 고정 후속 고민
   await expect(page.locator('.msg.player')).toHaveCount(3);
-  await shot(page, '03-advice');
+  await expect(page.locator('.steps li.on')).toHaveText('1. 캐릭터 돕기');
   await page.getByRole('button', { name: '다음' }).click();
   await expect(page.locator('#advice').locator('..').locator('.field-error')).not.toBeEmpty();
-  await page.locator('#advice').fill('[TEST] 한 번 실패했다고 끝난 건 아니야. 작은 것부터 해 봐.');
+  await expect(page.locator('label[for=advice]')).toHaveText('1 / 3번째 조언');
+  await page.locator('#advice').fill('[TEST] 한 번 실패했다고 끝난 건 아니야.');
+  await page.getByRole('button', { name: '다음' }).click();
+  await expect(page.locator('.msg.character').last()).toContainText('[TEST] 후속 고민 B1');
+  await expect(page.locator('label[for=advice]')).toHaveText('2 / 3번째 조언');
+  await page.locator('#advice').fill('[TEST] 작은 것부터 해 봐.');
+  await page.getByRole('button', { name: '다음' }).click();
+  await expect(page.locator('.msg.character').last()).toContainText('[TEST] 후속 고민 B2');
+  await shot(page, '03-advice');
+  await page.locator('#advice').fill('[TEST] 오늘은 하나만 해 보자.');
+  await page.getByRole('button', { name: '다음' }).click();
+  await expect(page.locator('.msg.character').last()).toContainText('[TEST] 마무리 B');
   await page.getByRole('button', { name: '다음' }).click();
 
   // S5
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('사전 성찰');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('내 경험 떠올리기');
+  await expect(page.locator('.steps li.on')).toHaveText('2. 내 이야기');
+  await expect(page.locator('#situation')).toHaveAttribute('placeholder', /달리기/);
+  await expect(page.locator('.reassure')).toHaveText('정답은 없어요. 떠오르는 대로 적어도 괜찮아요.');
+  await shot(page, '03b-reflect');
   await page.locator('#situation').fill('[TEST] 비슷한 경험');
   await page.locator('#emotion').fill('[TEST] 불안');
   await page.locator('#automatic_thought').fill('[TEST] 나는 안 돼');

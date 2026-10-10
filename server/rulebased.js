@@ -19,7 +19,9 @@ export function substitute(text, subs) {
 }
 
 export function convert(rules, advice) {
-  const body = substitute(String(advice).trim().replace(new RegExp(rules.strip_trailing, 'u'), ''), rules.substitutions);
+  // 여러 회차를 합친 조언은 한 문장으로 이어 붙인다
+  const joined = String(advice).trim().replace(/\s*\n\s*/g, ' ');
+  const body = substitute(joined.replace(new RegExp(rules.strip_trailing, 'u'), ''), rules.substitutions);
   return { sentence: `${rules.situation_clause}${body}${rules.frame_suffix}`, situation_clause: rules.situation_clause, main_clause: `${body}${rules.frame_suffix}` };
 }
 

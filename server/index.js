@@ -84,6 +84,14 @@ export function createApp(overrides = {}, deps = {}) {
     res.status(201).json(flow.publicView(s, c));
   }));
 
+  // 캐릭터 표정 이미지: content/scenarios/<id>/faces/<표정>.svg
+  app.get('/faces/:id/:expr.svg', wrap(async (req, res) => {
+    const c = content();
+    const sc = c.scenario(req.params.id);
+    if (!sc || !(sc.expressions || []).includes(req.params.expr)) throw new flow.FlowError('없는 이미지예요', 404);
+    res.type('image/svg+xml').sendFile(path.join(settings.contentDir, 'scenarios', sc.id, 'faces', `${req.params.expr}.svg`), (err) => { if (err && !res.headersSent) res.status(404).end(); });
+  }));
+
   app.get('/api/sessions/:id', wrap(async (req, res) => {
     const s = await store.get(req.params.id);
     if (!s) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
@@ -114,6 +122,7 @@ export function createApp(overrides = {}, deps = {}) {
     throw err;
   }
 
+  // S4 조언: 회차마다 위험 신호를 검사·기록하고, 마지막 회차(또는 다시 쓰기)에서 모든 회차를 합쳐 한 번 변환한다
   app.post('/api/sessions/:id/advice', wrap(async (req, res) => {
     const c = content();
     const id = req.params.id;
@@ -122,22 +131,36 @@ export function createApp(overrides = {}, deps = {}) {
     try { flow.requireStage(s0, 'S4'); } catch (err) { await conflict(id, err, 'S4'); }
     const advice = flow.validateAdvice(req.body || {});
     if (transforming.has(id)) await conflict(id, new flow.FlowError('조언을 정리하는 중이에요', 409), 'S4', 'duplicate_rejected');
+    const safety = createSafety(c.safety);
+    const st = flow.adviceState(s0);
+
+    if (!st.final) {
+      let flagged = false;
+      let reply = null;
+      const s = await store.update(id, (s) => {
+        reply = flow.addAdviceRound(s, advice, c);
+        flagged = flow.scanUrgent(s, safety, 'S4', { advice });
+      }).catch((err) => conflict(id, err, 'S4'));
+      return res.json({ ...flow.publicView(s, c), safety: flagged, reply });
+    }
+
     transforming.add(id);
     try {
-      const safety = createSafety(c.safety);
-      const out = await runTransform({ llm, prompt: prompt(), scenario: c.scenario(s0.pick.characterId), advice, safety });
+      const texts = [...s0.advice.rounds.map((r) => r.text), advice];
+      const out = await runTransform({ llm, prompt: prompt(), scenario: c.scenario(s0.pick.characterId), advice: flow.numberedAdvice(texts), safety });
       let flagged = false;
+      let reply = null;
       const s = await store.update(id, (s) => {
-        flow.applyTransform(s, advice, out);
+        reply = flow.applyTransform(s, advice, out, c, s0.advice.rounds.length);
         flagged = flow.scanUrgent(s, safety, 'S4', { advice });
       }).catch(async (err) => {
         // 변환 중에 그만두기 등으로 단계가 바뀌었으면 결과는 버리되 AI 호출 기록은 남긴다
         if (err?.status === 409) {
-          await store.update(id, (s) => { (s.orphanAttempts ||= []).push({ text: advice, at: new Date().toISOString(), ...out, outcome: 'cancelled', originalOutcome: out.outcome }); }).catch(() => {});
+          await store.update(id, (s) => { (s.orphanAttempts ||= []).push({ text: flow.combinedAdvice(texts), at: new Date().toISOString(), ...out, outcome: 'cancelled', originalOutcome: out.outcome }); }).catch(() => {});
         }
         throw err;
       });
-      res.json({ ...flow.publicView(s, c), safety: flagged });
+      res.json({ ...flow.publicView(s, c), safety: flagged, reply });
     } finally {
       transforming.delete(id);
     }

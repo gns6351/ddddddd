@@ -136,6 +136,15 @@ function renderAnalysis(a, research) {
     table(['캐릭터', '확인', '경험 없음', '선택', '관련성 평균(SD)', '완료'],
       a.characters.map((c) => [c.label, c.checked, c.noExperience, c.picked, mdsd(c.relevance), c.completed]), [1, 2, 3, 4, 5]));
 
+  const ATT = { empathy: '공감', specify: '구체화', explore: '탐색' };
+  const dialogue = panel('대화 선택 분포 (S3)', '선택지마다 노출되는 사실이 달라, 한 선택지에 80% 이상 몰리면(⚠) 파일럿 후 선택지를 다시 쓰세요.',
+    ...a.dialogue.filter((d) => d.turns.some((t) => t.n)).map((d) => h('div', {}, h('p', { class: 'note' }, d.label),
+      table(['턴', 'n', ...d.turns[0].choices.map((_, i) => `선택지 ${i + 1}`), ''], d.turns.map((t) => [
+        t.turn, t.n, ...t.choices.map((c) => h('span', { 'data-tip': c.text }, `${ATT[c.attitude] || c.attitude} ${t.n ? `${c.count} (${pct(c.count, t.n)})` : '—'}`)),
+        t.skewed ? h('span', { class: 'badge warn' }, '⚠ 80% 이상') : '',
+      ]), [1]))),
+    a.dialogue.every((d) => d.turns.every((t) => !t.n)) ? h('p', { class: 'muted' }, '아직 대화를 마친 참가자가 없어요') : '');
+
   const o = a.outcome;
   const outcome = h('div', { class: 'grid2' },
     panel('조언 변환 결과', `조언을 낸 ${o.n}명. 다시 쓰기 ${o.retried}명 (그중 ok ${o.retriedToOk}) · 규칙으로 바로 걸린 것 ${o.byRule}건.`, hbar(o.counts, o.n)),
@@ -176,7 +185,7 @@ function renderAnalysis(a, research) {
 
   $('analysis').replaceChildren(
     h('h2', {}, '한눈에 보기'), summary,
-    h('h2', {}, '진행'), h('div', { class: 'grid2' }, funnel, stageTime), chars,
+    h('h2', {}, '진행'), h('div', { class: 'grid2' }, funnel, stageTime), chars, dialogue,
     h('h2', {}, '조언 변환'), outcome,
     h('h2', {}, '믿음 변화'), beliefCharts, beliefStats,
     h('h2', {}, '돌아온 말과 적용'), judge, cross,
@@ -439,11 +448,12 @@ async function showDetail(id) {
     kv([
       ['확인한 캐릭터', x.pick.checks.map((k) => `${meta.characters.find((c) => c.id === k.characterId)?.label}: ${k.hasExperience ? `경험 있음(관련성 ${k.relevance})` : '없음'}`).join('\n')],
       ['선택', ch?.label],
-      ['대화', x.dialogue.map((d) => `Q${d.turn}. ${d.question}\n→ ${d.reply}`).join('\n')],
+      ['대화', x.dialogue.map((d) => `${d.turn}. [${{ empathy: '공감', specify: '구체화', explore: '탐색' }[d.attitude] || '-'}] ${d.question}\n→ ${d.reply}`).join('\n')],
     ]),
     h('h3', {}, '조언과 변환'),
     kv([
-      ...x.advice.attempts.map((a) => [`조언 ${a.n}차 (${a.outcome}${a.source === 'rule' ? ', 규칙' : ''})`, a.text]),
+      ...(x.advice.rounds || []).map((r) => [`조언 ${r.n}회${r.retry ? ' (다시 쓰기)' : ''}`, `${r.text}${r.reply ? `\n→ ${r.reply.text}` : ''}`]),
+      ...x.advice.attempts.map((a) => [`변환 ${a.n}차 (${a.outcome}${a.source === 'rule' ? ', 규칙' : ''})`, `${a.rounds || 1}회 조언을 합쳐 변환`]),
       ['유형', fa?.result?.type],
       ['핵심', fa?.result?.core?.join(' | ')],
       ['돌아온 말', fa?.result?.self],

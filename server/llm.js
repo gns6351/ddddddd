@@ -39,15 +39,17 @@ export function outcomeOf(p) {
 }
 
 // 모의 응답. 조언 끝에 #notadvice #unsafe #blaming #badjson #latchbad #error 를 붙이면 그 경로를 시험할 수 있다.
+// 여러 회차를 합친 조언이면 태그는 마지막(가장 최근) 조언에서만 본다.
 function mockRaw(advice) {
   const empty = { type: null, core: [], self: '' };
-  if (advice.includes('#error')) throw Object.assign(new Error('mock error'), { status: 503 });
-  if (advice.includes('#badjson')) return '{"is_advice": tru';
-  if (advice.includes('#latchbad')) return '{"is_advice": true, "unsafe": true, "blaming": false, "type": "혼합"';
-  if (advice.includes('#unsafe')) return JSON.stringify({ is_advice: true, unsafe: true, blaming: false, ...empty });
-  if (advice.includes('#blaming')) return JSON.stringify({ is_advice: true, unsafe: false, blaming: true, ...empty });
-  if (advice.includes('#notadvice')) return JSON.stringify({ is_advice: false, unsafe: false, blaming: false, ...empty });
-  const text = advice.replace(/#\w+/g, '').trim();
+  const tag = String(advice).trim().split('\n').at(-1);
+  if (tag.includes('#error')) throw Object.assign(new Error('mock error'), { status: 503 });
+  if (tag.includes('#badjson')) return '{"is_advice": tru';
+  if (tag.includes('#latchbad')) return '{"is_advice": true, "unsafe": true, "blaming": false, "type": "혼합"';
+  if (tag.includes('#unsafe')) return JSON.stringify({ is_advice: true, unsafe: true, blaming: false, ...empty });
+  if (tag.includes('#blaming')) return JSON.stringify({ is_advice: true, unsafe: false, blaming: true, ...empty });
+  if (tag.includes('#notadvice')) return JSON.stringify({ is_advice: false, unsafe: false, blaming: false, ...empty });
+  const text = advice.replace(/^\d\)\s*/gm, '').replace(/#\w+/g, '').replace(/\s*\n\s*/g, ' ').trim();
   const self = text.replace(/당신|너는|넌|너/g, '나').replace(/당신이|네가|니가/g, '내가');
   return JSON.stringify({
     is_advice: true, unsafe: false, blaming: false, type: '혼합',

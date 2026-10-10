@@ -64,6 +64,17 @@ export function computeAnalysis(all, content, filters = {}) {
     };
   });
 
+  // S3 선택 분포: 한 선택지에 80% 이상 몰리면 파일럿 후 다시 쓴다(선택지마다 노출 사실이 달라 조언 질 분석이 치우침)
+  const dialogue = content.scenarios.map((sc) => ({
+    id: sc.id, label: names[sc.id],
+    turns: sc.dialogue.turns.map((t) => {
+      const picks = sessions.filter((s) => s.pick.characterId === sc.id).flatMap((s) => s.dialogue.filter((d) => d.turn === t.turn));
+      const choices = t.choices.map((c) => ({ id: c.id, attitude: c.attitude || '', text: c.text, count: picks.filter((d) => d.choiceId === c.id).length }));
+      const max = Math.max(0, ...choices.map((c) => c.count));
+      return { turn: t.turn, n: picks.length, choices, skewed: picks.length > 0 && max / picks.length >= 0.8 };
+    }),
+  }));
+
   const transformed = sessions.filter((s) => s.advice.outcome);
   const calls = sessions.flatMap((s) => s.advice.attempts.flatMap((a) => a.calls || []));
   const outcome = {
@@ -106,6 +117,7 @@ export function computeAnalysis(all, content, filters = {}) {
     durations: { totalMin: median(done.map((s) => minutes(s.createdAt, s.finishedAt)).filter(Number.isFinite)), stages: stageMinutes },
     funnel,
     characters,
+    dialogue,
     outcome,
     belief: [beliefPair('완료자 전체', done), beliefPair('변환 ok 경로', ok), beliefPair('변환 ok 아닌 경로', nonOk)],
     fidelity: { n: returned.length, counts: counts(returned.map((s) => s.returned.fidelity), FIDELITY_LABELS), edited: returned.filter((s) => s.returned.edited_self).length },
