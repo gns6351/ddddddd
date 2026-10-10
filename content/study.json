@@ -1,0 +1,10 @@
+{
+  "studyVersion": "draft-0.3",
+  "_note": "scenarios 순서대로 S2에 표시된다. adviceRounds = S4 조언 회차(모든 참가자 동일, 파일럿에서 세션이 35분을 넘으면 2로 줄임). 시나리오 파일은 content/scenarios/<id>/scenario.json",
+  "scenarios": [
+    "A-job",
+    "B-refusal",
+    "C-perfection"
+  ],
+  "adviceRounds": 3
+}

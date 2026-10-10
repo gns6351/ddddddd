@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="조금 누그러진 표정">
+  <rect width="120" height="120" rx="24" fill="#eef0f4"/>
+  <path d="M22 62 Q20 20 60 18 Q100 20 98 62 L100 104 L20 104 Z" fill="#5b3b2b"/>
+  <path d="M22 120 Q24 92 60 90 Q96 92 98 120 Z" fill="#c78a9b"/>
+  <rect x="52" y="80" width="16" height="14" rx="6" fill="#f5dac6"/>
+  <ellipse cx="60" cy="58" rx="31" ry="33" fill="#f5dac6"/>
+  <path d="M26 54 Q28 22 60 22 Q92 22 94 54 Q86 36 60 36 Q40 36 26 54 Z" fill="#5b3b2b"/>
+  <path d="M41 47 Q47 46 53 47" stroke="#2b2420" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M67 47 Q73 46 79 47" stroke="#2b2420" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  <circle cx="47" cy="58" r="3" fill="#2b2420"/><circle cx="73" cy="58" r="3" fill="#2b2420"/>
+  
+  <path d="M53 75 Q60 77.5 67 75" stroke="#2b2420" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  
+</svg>

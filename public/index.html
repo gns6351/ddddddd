@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>상담 연습</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand" id="brand">상담 연습</div>
+    <ol class="steps" id="steps" aria-label="진행 단계"></ol>
+    <button type="button" class="link" id="withdraw" hidden>그만하기</button>
+  </header>
+  <div id="mock" class="mockbar" hidden>모의(mock) 모드: AI 대신 가짜 변환 문장이 나옵니다.</div>
+  <div id="safety" class="safety" role="alert" hidden>
+    <p id="safety-text"></p>
+    <button type="button" class="link" id="safety-close">닫기</button>
+  </div>
+  <main id="app" class="wrap" aria-live="polite"><div class="loading">불러오는 중…</div></main>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

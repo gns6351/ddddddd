@@ -1,0 +1,58 @@
+{
+  "version": "draft-0.1",
+  "_note": "정규식(JavaScript, u 플래그). 원문(NFKC)과 공백 제거본 모두에 적용. urgent는 S4~S9 자유서술 전체, unsafe·blaming은 S4 조언에만 적용. rule_pre 오탐은 정상 ok 참가자를 S6·S8 생략 경로로 보내므로 unsafe·blaming은 정밀도 우선으로 좁게 작성하고 세부 판정은 LLM에 맡김.",
+  "urgent": [
+    {
+      "id": "u01-suicidal-intent",
+      "pattern": "죽고\\s*싶|자살|목숨을?\\s*끊|극단적(인)?\\s*(선택|생각)|살고\\s*싶지\\s*않|사라지고\\s*싶|없어지고\\s*싶"
+    },
+    {
+      "id": "u02-self-harm",
+      "pattern": "자해|손목을?\\s*(긋|그었)|(내|제)\\s*몸을?\\s*(해치|다치게\\s*하)"
+    },
+    {
+      "id": "u03-plan-means",
+      "pattern": "유서|뛰어내리(려|고\\s*싶|겠|기로)|약을?\\s*(모아|모으|잔뜩|한꺼번에)"
+    },
+    {
+      "id": "u04-harm-others",
+      "pattern": "죽여\\s*버리|죽이고\\s*싶|해치고\\s*싶|가만두지\\s*않겠"
+    },
+    {
+      "id": "u05-help-request",
+      "pattern": "(저|나)\\s*좀\\s*(도와|살려)\\s*주세요|지금\\s*너무\\s*위험해"
+    }
+  ],
+  "unsafe": [
+    {
+      "id": "x01-self-harm-advice",
+      "pattern": "죽어\\s*버려|죽는\\s*게\\s*나아|자해\\s*해|사라져\\s*버려|뛰어내려"
+    },
+    {
+      "id": "x02-dangerous-behavior",
+      "pattern": "음주\\s*운전|술\\s*(잔뜩\\s*)?마시고\\s*운전|약을?\\s*(왕창|잔뜩)\\s*(먹|삼켜)|굶어\\s*버려"
+    },
+    {
+      "id": "x03-violence-advice",
+      "pattern": "때려\\s*(버려|줘)|패\\s*버려|해코지\\s*해"
+    }
+  ],
+  "blaming": [
+    {
+      "id": "b01-your-fault",
+      "pattern": "(네|니|너의?)\\s*탓(?!\\s*(이|은|만은?)?\\s*아니)"
+    },
+    {
+      "id": "b02-you-did-wrong",
+      "pattern": "(네가|니가|너가)\\s*(게을러서|노력을?\\s*안\\s*해서|노력이\\s*부족해서|못나서|우유부단해서)"
+    },
+    {
+      "id": "b03-slur",
+      "pattern": "병신|등신|한심한\\s*(놈|애|녀석)"
+    }
+  ],
+  "fallback": {
+    "unsafe": [],
+    "blaming": []
+  }
+}

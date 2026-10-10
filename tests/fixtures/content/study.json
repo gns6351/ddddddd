@@ -1,0 +1,10 @@
+{
+  "studyVersion": "test-1",
+  "scenarios": [
+    "T-alpha",
+    "T-beta",
+    "T-gamma"
+  ],
+  "adviceRounds": 1,
+  "_note": "테스트 기본은 조언 1회. 여러 회차 테스트는 helpers.withRounds로 복사본을 만든다."
+}

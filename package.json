@@ -1,0 +1,26 @@
+{
+  "name": "counselor-roleplay-selfapp",
+  "version": "4.0.0",
+  "private": true,
+  "description": "상담자 역할 게임 자기적용 연구 시스템 (간편판: 참가자 화면 + 연구자 대시보드)",
+  "type": "module",
+  "main": "server/start.js",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "start": "node server/start.js",
+    "dev": "node --watch server/start.js",
+    "tunnel": "node scripts/tunnel.js",
+    "check:transform": "node scripts/check-transform.js",
+    "test": "node --test \"tests/*.test.js\"",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@google/genai": "^2.28.0",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  }
+}

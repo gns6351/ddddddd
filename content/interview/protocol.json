@@ -1,0 +1,71 @@
+{
+  "version": "spec-v3.4-§13.5",
+  "_note": "명세 §13.5 원문. 연구자 대시보드의 세션 상세(완료자)에서 경로별 질문과 메모 틀로 표시된다.",
+  "target": "S11 completed 참가자, 10~15분, 연구자 1인이 같은 순서로 진행",
+  "standard_opening": "각 질문은 답하지 않아도 되고 언제든 중단할 수 있어요. 정답이나 특정 결론을 기대하지 않습니다.",
+  "stop_phrase": "여기서 인터뷰를 종료할게요. 이미 작성한 자료의 처리는 동의와 철회 절차에 따릅니다.",
+  "questions": [
+    {
+      "id": "Q1",
+      "path": "common",
+      "text": "캐릭터에게 조언을 작성할 때 어떤 점을 고려했나요?",
+      "rule": "작성 맥락과 대화 선택 사실 확인; 모범답안 유도 금지"
+    },
+    {
+      "id": "Q2",
+      "path": "common",
+      "text": "캐릭터 이야기와 자신의 경험 사이에 비슷하거나 다른 점은 무엇이었나요?",
+      "rule": "S5 관련성 구체화. 개인 신상 상세 요구 금지"
+    },
+    {
+      "id": "Q3",
+      "path": "ok",
+      "text": "돌려받은 문장에서 자기 말과 같거나 다르다고 느낀 표현은 무엇이었나요?",
+      "rule": "S6 fidelity·수정 이유 확인"
+    },
+    {
+      "id": "Q3b",
+      "path": "exception",
+      "text": "조언 반환 화면 없이 다음 단계로 이동한 경험은 어땠나요?",
+      "rule": "fallback/not_advice/unsafe/blaming/safety_hold. 원문·판정 이유 강요 금지"
+    },
+    {
+      "id": "Q4",
+      "path": "ok",
+      "text": "그 조언을 자신의 상황에 수용·수정·보류·거부한 이유는 무엇이었나요?",
+      "rule": "판단 근거/한계, 유도감 질문 전 원인 자유서술"
+    },
+    {
+      "id": "Q4b",
+      "path": "exception",
+      "text": "자신의 생각을 근거로 다시 검토한 과정에서 어떤 점이 중요했나요?",
+      "rule": "S7/S9 질문, 미실시 S8 언급 금지"
+    },
+    {
+      "id": "Q5",
+      "path": "common",
+      "text": "화면 흐름 중 특정 답을 해야 한다고 느낀 부분이나 부담이 있었나요?",
+      "rule": "주도권·결론 유도·부담을 중립적으로 기록"
+    },
+    {
+      "id": "Q6",
+      "path": "common",
+      "text": "이 경험에서 도움이 됐거나 혼란스러웠던 점이 있었나요?",
+      "rule": "활용성·불편·개선 의견, 행동 발생으로 해석 금지"
+    }
+  ],
+  "followup_limit": "추가 확인 질문은 중립적으로 최대 1~2개, 질문/사유를 인터뷰 로그에 기록",
+  "memo_fields": [
+    "interview_id",
+    "interview_path(ok/예외)",
+    "start_time",
+    "end_time",
+    "question_summaries(질문 ID별)",
+    "quotes(동의된 경우에 한함)",
+    "missing_or_refusal_codes",
+    "followup_questions",
+    "recording_consent(yes/no)",
+    "researcher_id",
+    "safety_incident(yes/no)"
+  ]
+}
