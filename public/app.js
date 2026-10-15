@@ -1,6 +1,7 @@
 // 참가자 화면. 단계는 서버가 정하고, 화면은 서버가 준 stage에 맞춰 그리기만 한다.
 const app = document.getElementById('app');
-const KEY = 'selfapp-session';
+const KEY = 'selfapp-v42-session';
+const ENTERED = new Date().toISOString(); // S1 진입 시각
 let T = null; // 화면 문구 (content/ui/strings.json)
 let view = null;
 let lastStage = null;
@@ -53,37 +54,20 @@ async function api(path, body) {
   return data;
 }
 
-// 화면 이벤트: 유형과 최소 정보(선택값·글자 수·체크 여부)만 보낸다. 원문은 보내지 않는다.
-const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
-function logEvent(type, payload = {}) {
-  if (!view || view.stage === 'S11') return;
-  fetch(`/api/sessions/${view.id}/events`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type, payload, event_id: newId(), client_ts: new Date().toISOString() }), keepalive: true,
-  }).catch(() => {});
-}
-
-function showSafety(flag) {
-  if (!flag) return;
-  document.getElementById('safety-text').textContent = T.common.safety_banner;
-  document.getElementById('safety').hidden = false;
-}
-document.getElementById('safety-close').addEventListener('click', () => { document.getElementById('safety').hidden = true; });
-
 document.getElementById('withdraw').addEventListener('click', async () => {
-  if (!view || !confirm(T.common.withdraw_confirm)) return;
-  try { view = await api(`/api/sessions/${view.id}/withdraw`, {}); render(); } catch (e) { alert(e.message); }
+  if (!view || !confirm(T.common.stop_confirm)) return;
+  try { view = await api(`/api/sessions/${view.id}/stop`, {}); render(); } catch (e) { alert(e.message); }
 });
 
-// 진행 표시: 3구간(캐릭터 돕기 → 내 이야기 → 돌아보기). 세부 단계 번호는 보여 주지 않는다.
-const SECTION_OF = { S2: 0, S3: 0, S4: 0, S5: 1, S6: 2, S7: 2, S8: 2, S9: 2, S10: 2, S11: 3 };
+// 진행 표시: 3구간(캐릭터 돕기 → 내 이야기 → 마무리). 세부 단계 번호는 보여 주지 않는다.
+const SECTION_OF = { S2: 0, S3: 0, S4: 1, S5: 1, S6: 1, S7: 1, S8: 2, S9: 2, END: 3 };
 function renderTop() {
   const ol = document.getElementById('steps');
   ol.replaceChildren();
   const idx = view ? SECTION_OF[view.stage] ?? -1 : -1;
   T.sections.forEach((label, i) => ol.append(h('li', { class: i === idx ? 'on' : i < idx ? 'past' : '', 'aria-current': i === idx ? 'step' : null }, `${i + 1}. ${label}`)));
-  document.getElementById('withdraw').hidden = !view || view.stage === 'S11';
-  document.getElementById('withdraw').textContent = T.common.withdraw_button;
+  document.getElementById('withdraw').hidden = !view || ['S9', 'END'].includes(view.stage);
+  document.getElementById('withdraw').textContent = T.common.stop_button;
 }
 
 // ---------- 입력 칸 ----------
@@ -97,27 +81,16 @@ function wrapField(id, spec, control, extra = []) {
   return el;
 }
 
-function textField(id, spec, { max = 2000, value = '', single = false, short = true } = {}) {
+function textField(id, spec, { max = 1000, value = '', single = false } = {}) {
   const placeholder = spec.placeholder || '';
   const input = single
-    ? h('input', { type: 'text', id, value, placeholder, autocomplete: 'off' })
+    ? h('input', { type: 'text', id, value, placeholder, autocomplete: 'off', maxlength: max * 2 })
     : h('textarea', { id, value, placeholder });
   const count = h('div', { class: 'count' });
-  const upd = () => { count.textContent = `${!single && short ? `${T.common.short_hint} · ` : ''}${fill(T.common.length, { length: [...input.value.trim()].length, max })}`; };
+  const upd = () => { count.textContent = fill(T.common.length, { length: [...input.value.trim()].length, max }); };
   input.addEventListener('input', upd);
   upd();
   return { el: wrapField(id, spec, input, [count]), input, get: () => input.value };
-}
-
-function slider(id, spec, min = 0, max = 100) {
-  let touched = false;
-  const out = h('output', {}, '—');
-  const range = h('input', { type: 'range', id, min, max, step: 1, value: Math.round((min + max) / 2), class: 'untouched' });
-  const mark = () => { touched = true; range.classList.remove('untouched'); out.textContent = range.value; };
-  for (const ev of ['input', 'pointerdown', 'keydown']) range.addEventListener(ev, mark);
-  range.addEventListener('change', () => logEvent('belief_set', { field: id, value: Number(range.value) }));
-  const el = wrapField(id, spec, h('div', { class: 'scale' }, range, out), [h('div', { class: 'ends' }, h('span', {}, min), h('span', {}, max))]);
-  return { el, get: () => (touched ? Number(range.value) : null) };
 }
 
 // 버튼형 선택: opts = [{value, label, help?}]
@@ -131,24 +104,15 @@ function choice(id, label, opts, { solid = false, onChange } = {}) {
     }));
   const el = wrapField(id, { label }, group);
   el.querySelector('label.q').removeAttribute('for');
-  return { el, get: () => value };
-}
-
-// 글 + "근거 부족 / 없음" 체크
-function textOrNone(id, noneId, spec, noneLabel, max) {
-  const t = textField(id, spec, { max });
-  const box = h('input', { type: 'checkbox', id: noneId });
-  box.addEventListener('change', () => { t.input.disabled = box.checked; logEvent('evidence_none_check', { field: noneId, checked: box.checked }); });
-  t.el.insertBefore(h('label', { class: 'check' }, box, noneLabel), t.el.querySelector('.field-error'));
-  return { el: t.el, get: () => (box.checked ? { [id]: '', [noneId]: true } : { [id]: t.get(), [noneId]: false }) };
+  return { el, get: () => value, set: (v) => { value = v; group.querySelector(`input[value="${String(v)}"]`).checked = true; } };
 }
 
 const task = (text) => h('p', { class: 'task' }, text);
-const noRightAnswer = () => h('p', { class: 'reassure' }, T.common.no_right_answer);
+const reassure = (text) => h('p', { class: 'reassure' }, text);
 
 function face(c, expression = 'neutral', cls = 'avatar') {
   if (!c?.faces || !expression) return '';
-  const img = h('img', { class: cls, src: `/faces/${c.id}/${expression}.svg`, alt: '' });
+  const img = h('img', { class: cls, src: `/faces/${expression}.svg`, alt: '' });
   img.addEventListener('error', () => img.remove());
   return img;
 }
@@ -175,8 +139,8 @@ function submitBar(label, send) {
       if (e.status === 409) { await reload(); return; }
       const f = e.field && fields.get(e.field);
       if (f) {
-        const tpl = { too_short: T.common.too_short, too_long: T.common.too_long }[e.reason] || T.common.required;
-        f.err.textContent = fill(tpl, { label: f.label, min: e.min, max: e.max });
+        const tpl = { too_short: T.common.too_short, too_long: T.common.too_long, required: T.common.required }[e.reason];
+        f.err.textContent = tpl ? fill(tpl, { label: f.label, min: e.min, max: e.max }) : e.message;
         f.el.classList.add('bad');
         f.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       } else err.textContent = e.message;
@@ -187,7 +151,6 @@ function submitBar(label, send) {
 
 async function step(path, body) {
   const data = await api(`/api/sessions/${view.id}/${path}`, body);
-  showSafety(data.safety);
   view = data;
   render();
   return data;
@@ -199,6 +162,7 @@ async function reload() {
 }
 
 // ---------- 화면 ----------
+// S1: 안내 · 사전 선별(비슷한 생각 여부, 관련성) · 동의
 function renderS1() {
   const s = T.S1;
   const params = new URLSearchParams(location.search);
@@ -207,10 +171,14 @@ function renderS1() {
   const urlCode = params.get('code') || '';
   const code = textField('accessCode', { label: s.code_label }, { single: true, value: urlCode, max: 64 });
   code.el.querySelector('.count').remove();
+  const rel = choice('relevance', s.relevance_label, [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n, help: n === 1 ? s.relevance_ends[0] : n === 5 ? s.relevance_ends[1] : '' })), { solid: true });
+  rel.el.hidden = true;
+  const similar = choice('similar', s.screen_label, [{ value: true, label: s.screen_yes }, { value: false, label: s.screen_no }], { onChange: (v) => { rel.el.hidden = !v; } });
   const agree = h('input', { type: 'checkbox', id: 'consent' });
   const bar = submitBar(s.start, async () => {
     if (!agree.checked) throw Object.assign(new Error(s.agree_label), { field: 'consent' });
-    view = await api('/api/sessions', { participantId: pid.get().trim(), accessCode: code.get().trim(), consent: true });
+    const sim = similar.get();
+    view = await api('/api/sessions', { participantId: pid.get().trim(), accessCode: code.get().trim(), consent: true, similar: sim, relevance: sim ? rel.get() : null, enteredAt: ENTERED });
     storage.set(view.id);
     render();
   });
@@ -219,227 +187,178 @@ function renderS1() {
   app.replaceChildren(
     h('h1', {}, s.title),
     h('p', {}, s.lead),
-    h('ol', { class: 'flow' }, s.flow.map((f) => h('li', {}, f))),
     h('div', { class: 'card' }, h('ul', { class: 'notices' }, s.notices.map((n) => h('li', {}, n)))),
     pid.el,
     CONFIG.needsAccessCode && !urlCode ? code.el : '',
+    similar.el, rel.el,
     h('div', { class: 'field' }, h('label', { class: 'check' }, agree, s.agree_label)),
     bar.el,
   );
 }
 
+function chatView(items) {
+  return h('div', { class: 'chat' }, items.map((m) => (m.who === 'me' ? playerMsg(m.text) : charMsg(m.text, m.expression))));
+}
+
+// S2: 첫 대사 → 선택지 3개 중 1개
 function renderS2() {
   const s = T.S2;
-  let picked = null;
-  const list = h('div', { class: 'choices', role: 'radiogroup' }, view.characters.map((c) => {
-    const radio = h('input', { type: 'radio', name: 'character', value: c.id, disabled: c.checked });
-    radio.addEventListener('change', () => { picked = c.id; });
-    return h('label', { class: `choice${c.checked ? ' off' : ''}` }, radio, face(c, 'neutral', 'avatar big'),
-      h('span', {}, h('span', { class: 'name' }, c.name), h('span', { class: 'title' }, c.title), h('br'), c.summary,
-        c.checked ? h('div', { class: 'muted' }, s.checked) : ''));
-  }));
-  const rel = choice('relevance', s.relevance_label, [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n })), { solid: true });
-  rel.el.hidden = true;
-  const exp = choice('has_experience', s.experience_label, [{ value: true, label: s.experience_yes }, { value: false, label: s.experience_no }],
-    { onChange: (v) => { rel.el.hidden = !v; } });
-  const bar = submitBar(null, async () => {
-    if (!picked) throw new Error(s.pick_first);
-    await step('pick', { character_id: picked, has_experience: exp.get(), relevance: exp.get() ? rel.get() : null });
-  });
-  app.replaceChildren(h('h1', {}, s.title), task(s.intro), list, exp.el, rel.el, bar.el);
-}
-
-// 대화 기록: 소개 → (턴마다) 캐릭터 공통 대사 → 내가 고른 말 → 캐릭터 대답
-function chatHistory(v = view) {
-  const chat = h('div', { class: 'chat' }, charMsg(v.intro, v.introExpression));
-  for (const x of v.history) {
-    if (x.lead) chat.append(charMsg(x.lead, x.leadExpression));
-    chat.append(playerMsg(x.question), charMsg(x.reply, x.expression));
-  }
-  return chat;
-}
-
-function renderS3() {
-  const s = T.S3;
   const err = h('div', { class: 'error', role: 'alert' });
-  const chat = chatHistory();
-  if (view.lead) chat.append(charMsg(view.lead, view.leadExpression));
   const buttons = view.choices.map((c) => h('button', { type: 'button', class: 'choice' }, c.text));
   view.choices.forEach((c, i) => buttons[i].addEventListener('click', async () => {
     buttons.forEach((b) => { b.disabled = true; });
     try {
-      await step('dialogue', { turn: view.turn, choice_id: c.id });
+      await step('dialogue', { choice_id: c.id });
     } catch (e) {
       if (e.status === 409) return reload();
       err.textContent = e.message;
       buttons.forEach((b) => { b.disabled = false; });
     }
   }));
-  app.replaceChildren(
-    h('h1', {}, fill(s.title)), chat,
-    h('p', { class: 'q' }, fill(s.choose), ' ', h('span', { class: 'muted' }, fill(s.turn, { turn: view.turn }))),
-    h('div', { class: 'choices' }, buttons), err,
-  );
-  buttons[0]?.scrollIntoView({ block: 'end' });
+  app.replaceChildren(h('h1', {}, fill(s.title)), chatView(view.chat), h('p', { class: 'q' }, fill(s.choose)), h('div', { class: 'choices' }, buttons), err);
 }
 
-function adviceChat(v) {
-  const chat = chatHistory(v);
-  chat.append(charMsg(v.closing, v.closingExpression));
-  for (const r of v.rounds) {
-    chat.append(playerMsg(r.advice));
-    if (r.reply) chat.append(charMsg(r.reply, r.expression));
-  }
-  return chat;
-}
-
-function renderS4() {
-  const s = T.S4;
-  const vars = { rounds: view.roundsTotal };
-  const chat = adviceChat(view);
-  const label = view.retry ? fill(s.placeholder) : fill(s.round, { round: view.round, rounds: view.roundsTotal });
-  const advice = textField('advice', { label, placeholder: fill(s.placeholder) }, { max: 2000 });
+// S3: 조언 1개. 조언 아님이면 캐릭터가 한 번 더 묻는다
+function renderS3() {
+  const s = T.S3;
+  const advice = textField('advice', { label: fill(s.label), placeholder: fill(s.placeholder) }, { max: 1000 });
   const pending = h('div', { class: 'loading', hidden: true }, s.pending);
   const bar = submitBar(null, async () => {
-    const text = advice.get();
     const before = view;
-    pending.hidden = !(view.round >= view.roundsTotal || view.retry);
+    const text = advice.get();
+    pending.hidden = false;
     try {
       const data = await api(`/api/sessions/${view.id}/advice`, { advice: text });
-      showSafety(data.safety);
       view = data;
-      // 마지막 조언 뒤 캐릭터의 마무리 대답을 보여 주고 다음으로 넘어간다
-      if (data.stage !== 'S4' && data.reply) return afterAdvice(before, text, data.reply);
+      if (data.stage !== 'S3' && data.reply) return afterAdvice(before, text, data.reply);
       render();
     } finally { pending.hidden = true; }
   });
-  app.replaceChildren(
-    h('h1', {}, fill(s.title)),
-    task(fill(s.guide, vars)),
-    chat,
-    view.retry ? h('div', { class: 'card' }, fill(s.retry_guide)) : '',
-    advice.el, noRightAnswer(), pending, bar.el,
-  );
+  app.replaceChildren(h('h1', {}, fill(s.title)), chatView(view.chat), advice.el, h('p', { class: 'muted' }, s.notice), pending, bar.el);
   advice.input.scrollIntoView({ block: 'center' });
 }
 
+// 조언 뒤 캐릭터의 마무리 대사를 보여 주고 다음 화면으로
 function afterAdvice(before, text, reply) {
-  const chat = adviceChat(before);
-  chat.append(playerMsg(text), charMsg(reply.text, reply.expression));
   const next = h('button', { type: 'button' }, T.common.submit);
   next.addEventListener('click', () => render());
-  app.replaceChildren(h('h1', {}, fill(T.S4.title, { name: before.character.name })), chat, h('div', { class: 'actions' }, next));
+  app.replaceChildren(h('h1', {}, fill(T.S3.title, { name: before.character.name })),
+    chatView([...before.chat, { who: 'me', text }, { who: 'char', ...reply }]), h('div', { class: 'actions' }, next));
   next.scrollIntoView({ block: 'center' });
 }
 
-function renderS5() {
-  const s = T.S5;
-  const F = s.fields;
-  const f = {
-    situation: textField('situation', F.situation),
-    emotion: textField('emotion', F.emotion, { max: 500 }),
-    automatic_thought: textField('automatic_thought', F.automatic_thought, { max: 500 }),
-  };
-  const belief = slider('belief_pre', F.belief);
-  const viewPre = textField('view_pre', F.view);
-  const bar = submitBar(null, () => step('reflect_pre', {
-    situation: f.situation.get(), emotion: f.emotion.get(), automatic_thought: f.automatic_thought.get(),
-    belief_pre: belief.get(), view_pre: viewPre.get(),
-  }));
-  app.replaceChildren(h('h1', {}, s.title), task(s.task), f.situation.el, f.emotion.el, f.automatic_thought.el, belief.el, viewPre.el, noRightAnswer(), bar.el);
+// S4: 그때 든 생각 한 줄(필수) + 비슷했던 상황 한 줄(선택)
+function renderS4() {
+  const s = T.S4;
+  const thought = textField('thought', s.thought, { single: true, max: 200 });
+  const situation = textField('situation', s.situation, { single: true, max: 200 });
+  const bar = submitBar(null, () => step('experience', { thought: thought.get(), situation: situation.get() }));
+  app.replaceChildren(h('h1', {}, s.title), task(fill(s.task)), thought.el, situation.el, reassure(T.common.no_right_answer), bar.el);
 }
 
-function renderS6() {
-  const s = T.S6;
-  const fid = choice('fidelity', s.fidelity_label, Object.entries(s.fidelity_options).map(([value, label]) => ({ value, label })),
-    { onChange: (v) => logEvent('fidelity_select', { value: v }) });
-  const edited = textField('edited_self', s.edit, { max: 1000 });
-  edited.input.addEventListener('change', () => logEvent('self_edit', { length: [...edited.get().trim()].length, changed: !!edited.get().trim() }));
-  const bar = submitBar(null, () => step('returned', { fidelity: fid.get(), edited_self: edited.get() }));
+// '고치기'를 눌렀을 때만 열리는 한 줄 입력
+function editBox(id, label, initial) {
+  const t = textField(id, { label }, { single: true, max: 300, value: initial });
+  t.el.hidden = true;
+  const btn = h('button', { type: 'button', class: 'secondary small' }, T.common.edit);
+  btn.addEventListener('click', () => { t.el.hidden = false; btn.hidden = true; t.input.focus(); });
+  return { btn, el: t.el, open: () => { t.el.hidden = false; btn.hidden = true; }, get: () => (t.el.hidden ? null : t.get()) };
+}
+
+// S5: 원문과 변환문을 나란히 → 잘 담김 / 조금 다름 / 많이 다름 (고치기는 선택)
+function renderS5() {
+  const s = T.S5;
+  const fid = choice('fidelity', fill(s.fidelity_label), Object.entries(s.fidelity_options).map(([value, label]) => ({ value, label })));
+  const edit = editBox('edit', s.edit_label, view.self);
+  const bar = submitBar(null, () => step('returned', { fidelity: fid.get(), edit: edit.get() }));
   app.replaceChildren(
-    h('h1', {}, s.title), task(s.task),
+    h('h1', {}, s.title), task(fill(s.task)),
     h('div', { class: 'card pair' },
       h('div', { class: 'said' }, h('div', { class: 'muted' }, fill(s.original_label)), view.advice),
       h('div', { class: 'returned' }, h('div', { class: 'muted' }, s.self_label), view.self)),
-    fid.el, edited.el, noRightAnswer(), bar.el,
+    fid.el,
+    h('div', { class: 'field' }, h('p', { class: 'hint' }, s.edit_hint), edit.btn), edit.el,
+    bar.el,
   );
 }
 
-function renderS7() {
-  const s = T.S7;
-  const forF = textOrNone('evidence_for', 'for_none', s.fields.evidence_for, s.none_label, 2000);
-  const against = textOrNone('evidence_against', 'against_none', s.fields.evidence_against, s.none_label, 2000);
-  const bar = submitBar(null, () => step('evidence', { ...forF.get(), ...against.get() }));
-  app.replaceChildren(
-    h('h1', {}, s.title), task(s.task),
-    h('div', { class: 'card' }, h('div', { class: 'muted' }, s.thought_label), h('div', { class: 'thought' }, view.automatic_thought)),
-    forF.el, against.el, noRightAnswer(), bar.el,
-  );
-}
-
-function renderS8() {
-  const s = T.S8;
-  const F = s.fields;
-  const common = textOrNone('common', 'common_none', F.common, s.none_label, 1000);
-  const diff = textOrNone('difference', 'difference_none', F.difference, s.none_label, 1000);
-  const modified = textField('modified_text', F.modified_text, { max: 1000 });
-  modified.el.hidden = true;
-  let lastVerdict = null;
-  const verdict = choice('verdict', s.verdict_label, Object.entries(s.verdict_options).map(([value, label]) => ({ value, label })),
-    { onChange: (v) => {
-      modified.el.hidden = v !== 'modify';
-      if (lastVerdict) logEvent('verdict_change', { from: lastVerdict, to: v }); else logEvent('verdict_select', { value: v });
-      lastVerdict = v;
-    } });
-  const reason = textField('reason', F.reason);
+// S6: 그때 든 생각 + 나에게 하는 말 → 그대로 / 고쳐서 / 미루기 / 안 맞음
+function renderS6() {
+  const s = T.S6;
+  const edit = textField('final', { label: s.edit_label }, { single: true, max: 300, value: view.sentence });
+  edit.el.hidden = true;
+  const dec = choice('decision', s.decision_label, Object.entries(s.decision_options).map(([value, label]) => ({ value, label })),
+    { onChange: (v) => { edit.el.hidden = v !== 'edited'; } });
   const bar = submitBar(null, () => {
-    const v = verdict.get();
-    return step('judge', { ...common.get(), ...diff.get(), verdict: v, reason: reason.get(), modified_text: v === 'modify' ? modified.get() : null });
+    const d = dec.get();
+    if (d === 'edited' && edit.get().trim() === view.sentence) throw Object.assign(new Error(s.unchanged), { field: 'final' });
+    return step('decision', { decision: d, final: d === 'edited' ? edit.get() : null });
   });
-  const E = T.S7.fields;
   app.replaceChildren(
     h('h1', {}, s.title), task(s.task),
     h('div', { class: 'card pair' },
-      h('div', { class: 'returned' }, h('div', { class: 'muted' }, s.target_label), view.target),
-      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.thought_label), view.automatic_thought),
-      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.evidence_label),
-        `${E.evidence_for.label}: ${view.evidence.for_none ? T.S7.none_label : view.evidence.evidence_for}\n${E.evidence_against.label}: ${view.evidence.against_none ? T.S7.none_label : view.evidence.evidence_against}`)),
-    common.el, diff.el, verdict.el, modified.el, reason.el, noRightAnswer(), bar.el,
+      h('div', { class: 'said' }, h('div', { class: 'muted' }, s.thought_label), h('span', { class: 'thought' }, view.thought)),
+      h('div', { class: 'returned' }, h('div', { class: 'muted' }, s.sentence_label), view.sentence)),
+    dec.el, edit.el, reassure(s.reassure), bar.el,
   );
 }
 
-// S9는 S5의 문구를 그대로 쓴다(사전·사후 비교 유지)
+// S7: 판단별 이유 선택지 하나 + (해당 선택지만) 한 줄
+function renderS7() {
+  const s = T.S7;
+  let picked = null;
+  const line = textField('reason_text', { label: '' }, { single: true, max: 200 });
+  line.el.hidden = true;
+  const list = h('div', { class: 'choices', role: 'radiogroup' }, view.reasons.map((r) => {
+    const radio = h('input', { type: 'radio', name: 'reason', value: r.id });
+    radio.addEventListener('change', () => {
+      picked = r;
+      line.el.hidden = !r.line;
+      line.el.querySelector('label.q').textContent = r.line || '';
+      fields.get('reason_text').label = r.line || '';
+    });
+    return h('label', { class: 'choice' }, radio, h('span', {}, r.text));
+  }));
+  const bar = submitBar(null, () => {
+    if (!picked) throw Object.assign(new Error(s.task), { field: null });
+    return step('reason', { reason: picked.id, text: picked.line ? line.get() : null });
+  });
+  app.replaceChildren(h('h1', {}, s.title), task(s.task), list, line.el, bar.el);
+}
+
+// S8: q10, q11 (디브리핑보다 먼저)
+function renderS8() {
+  const s = T.S8;
+  const items = ['q10', 'q11'].map((q) => [q, choice(q, s.items[q], [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n, help: s.scale[n] })))]);
+  const bar = submitBar(null, () => step('survey', Object.fromEntries(items.map(([q, c]) => [q, c.get()]))));
+  app.replaceChildren(h('h1', {}, s.title), ...items.map(([, c]) => c.el), bar.el);
+}
+
+// S9: 디브리핑 → 데이터 철회 선택
 function renderS9() {
   const s = T.S9;
-  const F = T.S5.fields;
-  const belief = slider('belief_post', F.belief);
-  const viewPost = textField('view_post', F.view);
-  const bar = submitBar(null, () => step('reflect_post', { belief_post: belief.get(), view_post: viewPost.get() }));
-  app.replaceChildren(
-    h('h1', {}, s.title), task(s.task),
-    h('div', { class: 'card' },
-      h('div', { class: 'muted' }, F.situation.label), h('div', { class: 'quote' }, view.situation),
-      h('div', { class: 'muted' }, F.automatic_thought.label), h('div', { class: 'quote thought' }, view.automatic_thought)),
-    belief.el, viewPost.el, noRightAnswer(), bar.el,
-  );
+  const paras = view.debrief === 'ok' ? s.debrief_ok : s.debrief_fail;
+  const reason = s.fail_reasons[view.failReason] || '';
+  const wd = choice('withdraw', s.withdraw_label, [{ value: false, label: s.withdraw_options.keep }, { value: true, label: s.withdraw_options.withdraw }]);
+  const bar = submitBar(s.finish, () => step('finish', { withdraw: wd.get() }));
+  app.replaceChildren(h('h1', {}, s.title), h('div', { class: 'card' }, paras.map((p) => h('p', {}, fill(p, { reason })))), wd.el, bar.el);
 }
 
-function renderS10() {
-  const s = T.S10;
-  const items = view.shown_items.map((q) => [q, choice(q, s.items[q], [1, 2, 3, 4, 5].map((n) => ({ value: n, label: n, help: s.scale[n] })))]);
-  const bar = submitBar(null, () => step('survey', Object.fromEntries(items.map(([q, c]) => [q, c.get()]))));
-  app.replaceChildren(h('h1', {}, s.title), h('p', { class: 'muted' }, s.intro), ...items.map(([, c]) => c.el), bar.el);
-}
-
-function renderS11() {
-  const s = T.S11;
+// 끝: 감사 + 상담 자원 안내
+function renderEND() {
+  const s = T.END;
   storage.clear();
   const again = h('button', { type: 'button', class: 'secondary' }, s.again);
   again.addEventListener('click', () => { view = null; lastStage = null; window.history.replaceState(null, '', location.pathname); render(); });
-  app.replaceChildren(h('h1', {}, s.title), h('p', {}, s[view.endType] || s.completed), h('p', { class: 'muted' }, T.common.safety_banner), h('div', { class: 'actions' }, again));
+  app.replaceChildren(
+    h('h1', {}, s.title),
+    h('p', {}, view.endType === 'screened_out' ? T.S1.screened_out : s.thanks),
+    h('div', { class: 'card' }, h('p', { class: 'q' }, s.resources_title), h('ul', { class: 'notices' }, s.resources.map((r) => h('li', {}, r)))),
+    h('div', { class: 'actions' }, again),
+  );
 }
 
-const SCREENS = { S1: renderS1, S2: renderS2, S3: renderS3, S4: renderS4, S5: renderS5, S6: renderS6, S7: renderS7, S8: renderS8, S9: renderS9, S10: renderS10, S11: renderS11 };
+const SCREENS = { S1: renderS1, S2: renderS2, S3: renderS3, S4: renderS4, S5: renderS5, S6: renderS6, S7: renderS7, S8: renderS8, S9: renderS9, END: renderEND };
 
 function render() {
   fields.clear();
@@ -462,9 +381,8 @@ async function boot() {
   document.getElementById('mock').hidden = CONFIG.llmMode !== 'mock';
   const saved = storage.get();
   if (saved) {
-    try { view = await api(`/api/sessions/${saved}`); logEvent('resume'); } catch { storage.clear(); view = null; }
+    try { view = await api(`/api/sessions/${saved}`); } catch { storage.clear(); view = null; }
   }
-  document.addEventListener('visibilitychange', () => logEvent('visibility', { state: document.visibilityState }));
   render();
 }
 

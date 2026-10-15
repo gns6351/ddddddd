@@ -1,30 +1,27 @@
 // API 서버. 참가자용(/api/...)과 연구자용(/api/admin/...)
 import express from 'express';
 import path from 'node:path';
-import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import { ROOT, loadSettings, loadContent, loadPrompt } from './config.js';
 import { createStore } from './store.js';
 import { createLlm } from './llm.js';
 import { createSafety } from './safety.js';
-import { runTransform } from './transform.js';
+import { processAdvice } from './pipeline.js';
 import * as flow from './flow.js';
-import { computeAnalysis, filterSessions } from './analysis.js';
+import { computeAnalysis, filterSessions, analyzable } from './analysis.js';
 import { flattenSession, toCsv } from './export.js';
-import { createRq3 } from './rq3.js';
-import { createCoding, SHEETS } from './coding.js';
-import { computeResearch } from './research.js';
-import { loadRules, convert } from './rulebased.js';
+import { createCoding, agreementReport, resolve, SHEETS, CODERS } from './coding.js';
+import { createValidation, loadSamples, codingTargets } from './validation.js';
 
 export function createApp(overrides = {}, deps = {}) {
   const settings = loadSettings(overrides);
   const store = createStore(settings.dataDir);
   const llm = deps.llm || createLlm(settings, { client: deps.geminiClient });
-  const transforming = new Set();
-  const rq3 = createRq3(settings.dataDir);
   const coding = createCoding(settings.dataDir);
+  const validation = createValidation(settings.dataDir);
+  const busy = new Set();
   const content = () => loadContent(settings.contentDir);
-  const prompt = () => loadPrompt(settings.contentDir, settings.transformPrompt);
+  const prompts = () => ({ transform: loadPrompt(settings.contentDir, 'transform', settings.transformPrompt), check: loadPrompt(settings.contentDir, 'check', settings.checkPrompt) });
 
   // 터널(Cloudflare)·다른 PC에서 온 요청인지
   const loopback = (ip) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
@@ -66,9 +63,10 @@ export function createApp(overrides = {}, deps = {}) {
   // ---- 참가자 ----
   app.get('/api/config', (req, res) => {
     const c = content();
-    res.json({ strings: c.strings, needsAccessCode: !!settings.accessCode && isRemote(req), llmMode: settings.llmMode });
+    res.json({ strings: c.strings, character: { name: c.character.name, faces: c.character.faces }, needsAccessCode: !!settings.accessCode && isRemote(req), llmMode: settings.llmMode });
   });
 
+  // S1: 동의 + 사전 선별(비슷한 생각 여부, 관련성)
   app.post('/api/sessions', wrap(async (req, res) => {
     const b = req.body || {};
     if (settings.accessCode && isRemote(req) && String(b.accessCode || '') !== settings.accessCode) {
@@ -77,19 +75,20 @@ export function createApp(overrides = {}, deps = {}) {
     if (b.consent !== true) throw new flow.FlowError('동의에 체크해 주세요', 422, { field: 'consent' });
     const pid = String(b.participantId || '').trim();
     if (pid && !/^[A-Za-z0-9가-힣_-]{1,32}$/.test(pid)) throw new flow.FlowError('참가자 ID는 한글·영문·숫자·-·_ 32자 이내로 적어 주세요', 422, { field: 'participantId' });
+    const screen = flow.validateScreen(b);
     rateLimit(req);
     const c = content();
-    const s = flow.newSession({ participantId: pid || `anon-${crypto.randomBytes(3).toString('hex')}`, settings, content: c, prompt: prompt() });
+    const entered = typeof b.enteredAt === 'string' && !Number.isNaN(Date.parse(b.enteredAt)) && Date.parse(b.enteredAt) <= Date.now() ? new Date(b.enteredAt).toISOString() : null;
+    const s = flow.newSession({ participantId: pid || `anon-${crypto.randomBytes(3).toString('hex')}`, settings, content: c, prompts: prompts(), screen, s1EnteredAt: entered });
     await store.create(s);
     res.status(201).json(flow.publicView(s, c));
   }));
 
-  // 캐릭터 표정 이미지: content/scenarios/<id>/faces/<표정>.svg
-  app.get('/faces/:id/:expr.svg', wrap(async (req, res) => {
+  // 캐릭터 표정 이미지: content/character/faces/<표정>.svg
+  app.get('/faces/:expr.svg', wrap(async (req, res) => {
     const c = content();
-    const sc = c.scenario(req.params.id);
-    if (!sc || !(sc.expressions || []).includes(req.params.expr)) throw new flow.FlowError('없는 이미지예요', 404);
-    res.type('image/svg+xml').sendFile(path.join(settings.contentDir, 'scenarios', sc.id, 'faces', `${req.params.expr}.svg`), (err) => { if (err && !res.headersSent) res.status(404).end(); });
+    if (!c.character.expressions.includes(req.params.expr)) throw new flow.FlowError('없는 이미지예요', 404);
+    res.type('image/svg+xml').sendFile(path.join(settings.contentDir, 'character', 'faces', `${req.params.expr}.svg`), (err) => { if (err && !res.headersSent) res.status(404).end(); });
   }));
 
   app.get('/api/sessions/:id', wrap(async (req, res) => {
@@ -99,81 +98,40 @@ export function createApp(overrides = {}, deps = {}) {
   }));
 
   const STEPS = {
-    pick: ['S2', flow.doPick], dialogue: ['S3', flow.doDialogue], reflect_pre: ['S5', flow.doReflectPre],
-    returned: ['S6', flow.doReturned], evidence: ['S7', flow.doEvidence], judge: ['S8', flow.doJudge],
-    reflect_post: ['S9', flow.doReflectPost], survey: ['S10', flow.doSurvey],
+    dialogue: flow.doDialogue, experience: flow.doExperience, returned: flow.doReturned, decision: flow.doDecision,
+    reason: flow.doReason, survey: flow.doSurvey, finish: flow.doFinish,
   };
-  for (const [name, [stage, handler]] of Object.entries(STEPS)) {
+  for (const [name, handler] of Object.entries(STEPS)) {
     app.post(`/api/sessions/:id/${name}`, wrap(async (req, res) => {
       const c = content();
-      const d = req.body || {};
-      let safety = false;
-      const s = await store.update(req.params.id, (s) => {
-        handler(s, d, c);
-        safety = flow.scanUrgent(s, createSafety(c.safety), stage, d);
-      }).catch((err) => conflict(req.params.id, err, stage));
-      res.json({ ...flow.publicView(s, c), safety });
+      const s = await store.update(req.params.id, (s) => { handler(s, req.body || {}, c); });
+      res.json(flow.publicView(s, c));
     }));
   }
 
-  // 지난·미래 단계 제출(409)은 이벤트로 남기고 그대로 알린다
-  async function conflict(id, err, stage, type = 'step_conflict') {
-    if (err?.status === 409) await store.update(id, (s) => { flow.addEvent(s, type, { attempted: stage }); }).catch(() => {});
-    throw err;
-  }
-
-  // S4 조언: 회차마다 위험 신호를 검사·기록하고, 마지막 회차(또는 다시 쓰기)에서 모든 회차를 합쳐 한 번 변환한다
+  // S3 조언: 판정·변환·점검(AI) 뒤 기록. 같은 세션의 동시 제출은 막는다
   app.post('/api/sessions/:id/advice', wrap(async (req, res) => {
     const c = content();
     const id = req.params.id;
     const s0 = await store.get(id);
     if (!s0) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
-    try { flow.requireStage(s0, 'S4'); } catch (err) { await conflict(id, err, 'S4'); }
+    flow.requireStage(s0, 'S3');
     const advice = flow.validateAdvice(req.body || {});
-    if (transforming.has(id)) await conflict(id, new flow.FlowError('조언을 정리하는 중이에요', 409), 'S4', 'duplicate_rejected');
-    const safety = createSafety(c.safety);
-    const st = flow.adviceState(s0);
-
-    if (!st.final) {
-      let flagged = false;
-      let reply = null;
-      const s = await store.update(id, (s) => {
-        reply = flow.addAdviceRound(s, advice, c);
-        flagged = flow.scanUrgent(s, safety, 'S4', { advice });
-      }).catch((err) => conflict(id, err, 'S4'));
-      return res.json({ ...flow.publicView(s, c), safety: flagged, reply });
-    }
-
-    transforming.add(id);
+    if (busy.has(id)) throw new flow.FlowError('조언을 처리하는 중이에요', 409);
+    busy.add(id);
     try {
-      const texts = [...s0.advice.rounds.map((r) => r.text), advice];
-      const out = await runTransform({ llm, prompt: prompt(), scenario: c.scenario(s0.pick.characterId), advice: flow.numberedAdvice(texts), safety });
-      let flagged = false;
+      const result = await processAdvice({ llm, prompts: prompts(), character: c.character, advice, safety: createSafety(c.safety), checkRules: c.study.check, timeoutMs: settings.timeoutMs });
       let reply = null;
-      const s = await store.update(id, (s) => {
-        reply = flow.applyTransform(s, advice, out, c, s0.advice.rounds.length);
-        flagged = flow.scanUrgent(s, safety, 'S4', { advice });
-      }).catch(async (err) => {
-        // 변환 중에 그만두기 등으로 단계가 바뀌었으면 결과는 버리되 AI 호출 기록은 남긴다
-        if (err?.status === 409) {
-          await store.update(id, (s) => { (s.orphanAttempts ||= []).push({ text: flow.combinedAdvice(texts), at: new Date().toISOString(), ...out, outcome: 'cancelled', originalOutcome: out.outcome }); }).catch(() => {});
-        }
-        throw err;
-      });
-      res.json({ ...flow.publicView(s, c), safety: flagged, reply });
+      const s = await store.update(id, (s) => { ({ reply } = flow.applyAdvice(s, advice, result, c, s0.s3.submissions.length)); });
+      res.json({ ...flow.publicView(s, c), reply });
     } finally {
-      transforming.delete(id);
+      busy.delete(id);
     }
   }));
 
-  app.post('/api/sessions/:id/withdraw', wrap(async (req, res) => {
-    const s = await store.update(req.params.id, (s) => flow.doWithdraw(s));
+  app.post('/api/sessions/:id/stop', wrap(async (req, res) => {
+    const s = await store.update(req.params.id, (s) => flow.doStop(s));
     res.json(flow.publicView(s, content()));
-  }));
-
-  app.post('/api/sessions/:id/events', wrap(async (req, res) => {
-    await store.update(req.params.id, (s) => { flow.doEvent(s, req.body || {}); });
-    res.status(204).end();
   }));
 
   // ---- 연구자 ----
@@ -188,41 +146,149 @@ export function createApp(overrides = {}, deps = {}) {
     }
   }
   const admin = (fn) => wrap(async (req, res) => { requireAdmin(req); return fn(req, res); });
-  const filtersOf = (q) => ({
-    mode: ['live', 'mock'].includes(q.mode) ? q.mode : 'all', character: String(q.character || 'all'),
-    phase: ['pilot', 'main'].includes(q.phase) ? q.phase : 'all',
-  });
+  const filtersOf = (q) => ({ mode: ['live', 'mock'].includes(q.mode) ? q.mode : 'all', phase: ['pilot', 'main'].includes(q.phase) ? q.phase : 'all' });
+  const filtered = async (q) => filterSessions(await store.list(), filtersOf(q));
+  const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
 
   app.get('/api/admin/meta', admin(async (req, res) => {
     const c = content();
-    const p = prompt();
+    const p = prompts();
     res.json({
-      llmMode: settings.llmMode, provider: settings.provider, model: settings.model, thinking: llm.thinking,
-      prompt: `${p.ref}@${p.hash}`, studyVersion: c.study.studyVersion, contentHash: c.hash,
-      characters: c.scenarios.map((x) => ({ id: x.id, label: `${x.name} · ${x.title}` })),
+      llmMode: settings.llmMode, model: settings.model, checkModel: settings.checkModel, sameCheckModel: settings.model === settings.checkModel,
+      thinking: llm.thinking, timeoutMs: settings.timeoutMs, phase: settings.phase,
+      prompts: { transform: `${p.transform.ref}@${p.transform.hash}`, check: `${p.check.ref}@${p.check.hash}` },
+      studyVersion: c.study.studyVersion, contentHash: c.hash, check: c.study.check, character: c.character.name,
+      criteria: c.criteria, categories: c.study.categories,
       needsToken: !!settings.adminToken, accessCode: !!settings.accessCode,
     });
   }));
 
+  // 시트별 코딩 기록(대상 목록 반영 후)
+  async function allCodes(list) {
+    const A = list.filter(analyzable).filter((s) => s.path === 'ok');
+    const runs = await validation.list();
+    const keys = {
+      validation: codingTargets(runs).map((t) => t.key),
+      transform: A.map((s) => s.id),
+      reason: A.filter((s) => s.s7).map((s) => s.id),
+      edit: A.flatMap((s) => [s.s5?.edited ? `${s.id}:S5` : null, s.s6?.decision === 'edited' ? `${s.id}:S6` : null]).filter(Boolean),
+    };
+    const codes = {};
+    for (const sheet of Object.keys(SHEETS)) codes[sheet] = await coding.sync(sheet, keys[sheet]);
+    return { codes, keys, runs, A };
+  }
+
   app.get('/api/admin/analysis', admin(async (req, res) => {
-    res.json(computeAnalysis(await store.list(), content(), filtersOf(req.query)));
+    const list = await filtered(req.query);
+    const { codes, keys, runs } = await allCodes(list);
+    const c = content();
+    const a = computeAnalysis(list, c, codes, runs, {});
+    const errIds = c.criteria.errors.map((e) => e.id);
+    a.agreement = {
+      validation: agreementReport('validation', codes.validation, keys.validation, errIds),
+      transform: agreementReport('transform', codes.transform, keys.transform, errIds),
+      reason: agreementReport('reason', codes.reason, keys.reason),
+      edit: agreementReport('edit', codes.edit, keys.edit, c.criteria.editTypes.map((t) => t.id)),
+    };
+    res.json(a);
   }));
 
-  app.get('/api/admin/sessions', admin(async (req, res) => {
+  // 코딩 항목: 블라인드(참가자 ID·사용자 판단·자동 점검 결과는 보이지 않음)
+  app.get('/api/admin/coding/:sheet', admin(async (req, res) => {
+    const sheet = req.params.sheet;
+    if (!SHEETS[sheet]) throw new flow.FlowError('없는 시트예요', 404);
+    const coder = CODERS.includes(req.query.coder) ? req.query.coder : 'coder1';
+    const list = await filtered(req.query);
+    const { codes, runs, A } = await allCodes(list);
     const c = content();
-    res.json((await store.list()).map((s) => ({
-      id: s.id, participantId: s.participantId, createdAt: s.createdAt, updatedAt: s.updatedAt, stage: s.stage, endType: s.endType,
-      character: c.scenario(s.pick.characterId)?.name || '', outcome: s.advice.outcome, verdict: s.judge?.verdict || null,
-      beliefPre: s.reflectPre?.belief_pre ?? null, beliefPost: s.reflectPost?.belief_post ?? null,
-      llmMode: s.llmMode, safety: s.safetyFlags.length, phase: s.phase || 'pilot', excluded: !!s.excluded?.excluded, interview: !!s.interview,
+    let items = [];
+    if (sheet === 'validation') {
+      const runId = String(req.query.run || runs.at(-1)?.runId || '');
+      items = codingTargets(runs).filter((t) => t.run.runId === runId).map((t) => ({ key: t.key, data: { advice: t.item.advice, self: t.item.self } }));
+    } else if (sheet === 'transform') {
+      items = A.map((s) => ({ key: s.id, data: { advice: flow.finalSubmission(s).text, self: flow.finalSubmission(s).self } }));
+    } else if (sheet === 'reason') {
+      items = A.filter((s) => s.s7).map((s) => ({
+        key: s.id,
+        data: { thought: s.s4?.thought, sentence: s.s6.sentence, decision: s.s6.decision, final: s.s6.final, reason: flow.reasonsFor(c.study, s.s6.decision).find((r) => r.id === s.s7.reasonId)?.text, text: s.s7.text, system: s.s7.category },
+      }));
+    } else {
+      items = A.flatMap((s) => [
+        s.s5?.edited ? { key: `${s.id}:S5`, data: { step: 'S5', before: s.s5.editBefore, after: s.s5.editAfter } } : null,
+        s.s6?.decision === 'edited' ? { key: `${s.id}:S6`, data: { step: 'S6', before: s.s6.sentence, after: s.s6.final } } : null,
+      ]).filter(Boolean);
+    }
+    const rows = items.map((it) => {
+      const r = codes[sheet].items[it.key];
+      return { blindId: r.blindId, ...it.data, mine: r[coder], coder1: coder === 'final' ? r.coder1 : undefined, coder2: coder === 'final' ? r.coder2 : undefined, final: coder === 'final' ? r.final : undefined, resolved: resolve(r) };
+    }).filter((x) => coder !== 'final' || x.resolved.status === 'conflict' || x.final != null);
+    rows.sort((a, b) => a.blindId.localeCompare(b.blindId));
+    res.json({ sheet, coder, runs: sheet === 'validation' ? runs.map((r) => ({ runId: r.runId, prompts: r.prompts, at: r.at })) : undefined, items: rows });
+  }));
+
+  app.post('/api/admin/coding/:sheet', admin(async (req, res) => {
+    const b = req.body || {};
+    res.json(await coding.save(req.params.sheet, String(b.coder), String(b.blindId), b.value === undefined ? null : b.value));
+  }));
+
+  // ---- 실험 전 검증 ----
+  app.get('/api/admin/validation', admin(async (req, res) => {
+    const samples = await loadSamples(settings.contentDir).catch(() => []);
+    res.json({ samples: samples.length, sources: [...new Set(samples.map((x) => x.source))], status: validation.status(), runs: (await validation.list()).map((r) => ({ ...r, items: undefined, n: r.items.length })) });
+  }));
+
+  app.post('/api/admin/validation/run', admin(async (req, res) => {
+    const c = content();
+    const samples = await loadSamples(settings.contentDir);
+    if (!samples.length) throw new flow.FlowError('content/validation/samples.json에 샘플이 없어요', 422);
+    if (validation.status()) throw new flow.FlowError('이미 검증을 실행하는 중이에요', 409);
+    const p = validation.run({ llm, prompts: prompts(), character: c.character, samples, checkRules: c.study.check, timeoutMs: settings.timeoutMs, note: String(req.body?.note || '').slice(0, 200) });
+    p.catch((err) => console.error('검증 실행 실패:', err));
+    if (req.body?.wait) return res.json(await p);
+    res.status(202).json({ started: true, total: samples.length });
+  }));
+
+  app.get('/api/admin/validation/:runId', admin(async (req, res) => {
+    const run = (await validation.list()).find((r) => r.runId === req.params.runId);
+    if (!run) throw new flow.FlowError('없는 실행이에요', 404);
+    res.json(run);
+  }));
+
+  app.delete('/api/admin/validation/:runId', admin(async (req, res) => {
+    await validation.remove(req.params.runId);
+    res.status(204).end();
+  }));
+
+  app.get('/api/admin/validation.csv', admin(async (req, res) => {
+    const list = await filtered(req.query);
+    const { codes, runs } = await allCodes(list);
+    const rows = runs.flatMap((r) => r.items.map((x) => {
+      const rec = codes.validation.items[`${r.runId}:${x.sampleId}`];
+      const v = resolve(rec).value;
+      return {
+        run_id: r.runId, prompt_transform: r.prompts.transform, prompt_check: r.prompts.check, model: r.model, check_model: r.checkModel, llm_mode: r.llmMode,
+        sample_id: x.sampleId, source: x.source, style: x.style, advice: x.advice, verdict: x.verdict ?? '', transformed: x.self ?? '',
+        check: x.check?.result ?? '', check_format: x.check?.format?.join(';') ?? '', check_reversal: x.check?.meaning?.reversal ?? '', check_addition: x.check?.meaning?.addition ?? '',
+        final_path: x.finalPath, fail_reason: x.failReason ?? '', retransformed: x.retransformed, final_transformed: x.finalSelf ?? '',
+        coder1: rec?.coder1?.join(';') ?? '', coder2: rec?.coder2?.join(';') ?? '', consensus: rec?.final?.join(';') ?? '', resolved: Array.isArray(v) ? v.join(';') || 'none' : '',
+      };
+    }));
+    res.attachment(`validation-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
+  }));
+
+  // ---- 세션 ----
+  app.get('/api/admin/sessions', admin(async (req, res) => {
+    res.json((await filtered(req.query)).map((s) => ({
+      id: s.id, pid: s.pid, createdAt: s.createdAt, stage: s.stage, endType: s.endType, path: s.path, failReason: s.failReason,
+      fidelity: s.s5?.fidelity || null, decision: s.s6?.decision || null, withdraw: !!s.s9?.withdraw,
+      llmMode: s.llmMode, phase: s.phase || 'pilot', excluded: !!s.excluded?.excluded, reviewed: !!s.reviewed, hasS4: !!s.s4,
     })));
   }));
 
   app.get('/api/admin/sessions/:id', admin(async (req, res) => {
     const s = await store.get(req.params.id);
     if (!s) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
-    const fa = flow.finalAttempt(s);
-    res.json({ ...s, ruleSelf: s.advice.outcome === 'ok' ? convert(loadRules(settings.contentDir), fa.text).sentence : null });
+    res.json(s);
   }));
 
   app.delete('/api/admin/sessions/:id', admin(async (req, res) => {
@@ -230,77 +296,7 @@ export function createApp(overrides = {}, deps = {}) {
     res.status(204).end();
   }));
 
-  app.get('/api/admin/export.csv', admin(async (req, res) => {
-    const rules = loadRules(settings.contentDir);
-    const rows = filterRows(await store.list(), req.query).map((s) => flattenSession(s, rules));
-    res.attachment(`sessions-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
-  }));
-
-  app.get('/api/admin/export.json', admin(async (req, res) => {
-    res.attachment(`sessions-${stamp()}.json`).json(filterRows(await store.list(), req.query));
-  }));
-
-  // ---- RQ3 코딩 ----
-  app.get('/api/admin/rq3/items', admin(async (req, res) => {
-    const coder = ['coder1', 'coder2', 'final'].includes(req.query.coder) ? req.query.coder : 'coder1';
-    res.json(await rq3.list(filterRows(await store.list(), req.query), loadRules(settings.contentDir), coder));
-  }));
-
-  app.post('/api/admin/rq3/code', admin(async (req, res) => {
-    const b = req.body || {};
-    res.json({ code: await rq3.save(String(b.coder), String(b.blindId), b.clear ? null : b) });
-  }));
-
-  app.get('/api/admin/rq3/summary', admin(async (req, res) => {
-    const list = filterRows(await store.list(), req.query);
-    await rq3.list(list, loadRules(settings.contentDir), 'coder1'); // 새 대상 반영
-    res.json(await rq3.summary(list));
-  }));
-
-  app.get('/api/admin/rq3/export.csv', admin(async (req, res) => {
-    res.attachment(`rq3-coding-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(await rq3.rows(filterRows(await store.list(), req.query))));
-  }));
-
-  const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  const filterRows = (list, q) => filterSessions(list, filtersOf(q));
-
-
-  // ---- RQ1 코딩 (A 재검토 · B 자기적용 · C 조언 질) ----
-  app.get('/api/admin/coding/:sheet/items', admin(async (req, res) => {
-    const coder = ['coder1', 'coder2', 'final'].includes(req.query.coder) ? req.query.coder : 'coder1';
-    const criteria = JSON.parse(await fs.readFile(path.join(settings.contentDir, 'coding', 'criteria.json'), 'utf8'));
-    const key = { reexam: 'A', selfapp: 'B', s8: 'B', advice: 'C' }[req.params.sheet];
-    res.json({ ...await coding.list(req.params.sheet, filterRows(await store.list(), req.query), content(), coder), criteria: criteria[key] });
-  }));
-
-  app.post('/api/admin/coding/:sheet/code', admin(async (req, res) => {
-    const b = req.body || {};
-    res.json({ code: await coding.save(req.params.sheet, String(b.coder), String(b.blindId), b.score === null ? null : Number.isInteger(b.score) ? b.score : NaN) });
-  }));
-
-  async function codingResults(list) {
-    const out = {};
-    for (const sheet of Object.keys(SHEETS)) {
-      await coding.list(sheet, list, content(), 'coder1'); // 새 대상 반영
-      out[sheet] = await coding.results(sheet, list);
-    }
-    return out;
-  }
-
-  app.get('/api/admin/research', admin(async (req, res) => {
-    const list = filterRows(await store.list(), req.query);
-    res.json(computeResearch(list, await codingResults(list)));
-  }));
-
-  app.get('/api/admin/coding/export.csv', admin(async (req, res) => {
-    const list = filterRows(await store.list(), req.query);
-    await codingResults(list);
-    const rows = [];
-    for (const sheet of Object.keys(SHEETS)) rows.push(...await coding.rows(sheet, list));
-    res.attachment(`rq1-coding-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
-  }));
-
-  // ---- 세션 관리: 분석 제외(기준 D)·파일럿 표시·인터뷰 기록 ----
+  // 단계 표시(파일럿/본실험)·분석 제외(무의미 입력, 연구자 2인 합의)·S4 기록 확인
   app.post('/api/admin/sessions/:id/meta', admin(async (req, res) => {
     const b = req.body || {};
     const s = await store.update(req.params.id, (s) => {
@@ -308,58 +304,38 @@ export function createApp(overrides = {}, deps = {}) {
         if (!['pilot', 'main'].includes(b.phase)) throw new flow.FlowError('단계는 pilot 또는 main', 422);
         s.phase = b.phase;
       }
-      if (b.excluded !== undefined) {
-        s.excluded = b.excluded ? { excluded: true, reason: String(b.reason || '').slice(0, 500), at: new Date().toISOString() } : null;
-      }
+      if (b.excluded !== undefined) s.excluded = b.excluded ? { excluded: true, reason: String(b.reason || '').slice(0, 500), at: new Date().toISOString() } : null;
+      if (b.reviewed !== undefined) s.reviewed = b.reviewed ? { at: new Date().toISOString(), note: String(b.note || '').slice(0, 500) } : null;
     });
-    res.json({ phase: s.phase, excluded: s.excluded });
+    res.json({ phase: s.phase, excluded: s.excluded, reviewed: s.reviewed });
   }));
 
-  app.post('/api/admin/sessions/:id/interview', admin(async (req, res) => {
-    const b = req.body || {};
-    const str = (v, n = 4000) => (typeof v === 'string' ? v.slice(0, n) : '');
-    const s = await store.update(req.params.id, (s) => {
-      if (s.endType !== 'completed') throw new flow.FlowError('인터뷰는 완료한 참가자만 기록해요', 409);
-      s.interview = {
-        path: s.advice.outcome === 'ok' ? 'ok' : 'exception',
-        start_time: str(b.start_time, 40), end_time: str(b.end_time, 40),
-        answers: Object.fromEntries(Object.entries(b.answers || {}).filter(([k]) => /^Q\w{1,4}$/.test(k)).map(([k, v]) => [k, str(v)])),
-        quotes: str(b.quotes), missing_or_refusal: str(b.missing_or_refusal, 1000), followups: str(b.followups, 2000),
-        recording_consent: b.recording_consent === true, safety_incident: b.safety_incident === true,
-        researcher_id: str(b.researcher_id, 40),
-        themes: [...new Set(String(b.themes || '').split(/[,;\n]/).map((t) => t.trim()).filter(Boolean))].slice(0, 30),
-        updatedAt: new Date().toISOString(),
-      };
-    });
-    res.json(s.interview);
+  app.get('/api/admin/export.csv', admin(async (req, res) => {
+    const list = await filtered(req.query);
+    const { codes } = await allCodes(list);
+    res.attachment(`sessions-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(list.map((s) => flattenSession(s, codes))));
   }));
 
-  app.get('/api/admin/criteria', admin(async (req, res) => {
-    res.json(JSON.parse(await fs.readFile(path.join(settings.contentDir, 'coding', 'criteria.json'), 'utf8')));
+  app.get('/api/admin/export.json', admin(async (req, res) => {
+    res.attachment(`sessions-${stamp()}.json`).json(await filtered(req.query));
   }));
 
-  app.get('/api/admin/interview-protocol', admin(async (req, res) => {
-    res.json(JSON.parse(await fs.readFile(path.join(settings.contentDir, 'interview', 'protocol.json'), 'utf8')));
+  app.get('/api/admin/coding.csv', admin(async (req, res) => {
+    const list = await filtered(req.query);
+    const { codes } = await allCodes(list);
+    const j = (v) => (Array.isArray(v) ? v.join(';') || 'none' : v ?? '');
+    const rows = Object.entries(codes).flatMap(([sheet, d]) => Object.entries(d.items).map(([key, r]) => ({ sheet, key, blind_id: r.blindId, coder1: j(r.coder1), coder2: j(r.coder2), consensus: j(r.final), resolved: j(resolve(r).value), status: resolve(r).status })));
+    res.attachment(`coding-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));
   }));
 
-  // 참가자별 이벤트 순서 (명세: timeline_<코드>.txt)
-  app.get('/api/admin/sessions/:id/timeline.txt', admin(async (req, res) => {
-    const s = await store.get(req.params.id);
-    if (!s) throw new flow.FlowError('세션을 찾을 수 없어요', 404);
-    const t0 = new Date(s.createdAt);
-    const lines = s.events.map((e) => `${String(Math.round((new Date(e.at) - t0) / 1000)).padStart(5)}s  ${e.at}  ${e.stage.padEnd(3)}  ${e.type}${Object.keys(e.payload || {}).length ? `  ${JSON.stringify(e.payload)}` : ''}`);
-    res.attachment(`timeline_${s.participantId}.txt`).type('text/plain; charset=utf-8').send(`${s.participantId} (${s.id})\n${lines.join('\n')}\n`);
-  }));
-
-  // 모든 AI 호출과 실패 사유 (명세: llm_log.csv)
+  // 모든 AI 호출 기록
   app.get('/api/admin/llm_log.csv', admin(async (req, res) => {
     const rows = [];
-    for (const s of filterRows(await store.list(), req.query)) {
-      const all = [...s.advice.attempts.map((a) => ({ ...a, cancelled: false })), ...(s.orphanAttempts || []).map((a) => ({ ...a, cancelled: true }))];
-      for (const a of all) {
-        const base = { session_id: s.id, participant_id: s.participantId, input_attempt: a.n ?? '', outcome: a.outcome, original_outcome: a.originalOutcome || '', safety_source: a.safetySource || '', source: a.source, rule_hits: (a.ruleHits || []).join(';'), latch_unsafe: !!a.latch?.unsafe, latch_blaming: !!a.latch?.blaming };
-        if (!a.calls?.length) rows.push({ ...base, try: '', at: a.at, llm_mode: '', model: '', response_model: '', latency_ms: '', valid: '', error: '', finish_reason: '', prompt: '' });
-        for (const c of a.calls || []) rows.push({ ...base, try: c.attempt, at: c.at, llm_mode: c.llmMode, model: c.model, response_model: c.responseModel || '', latency_ms: c.latencyMs, valid: c.valid, error: c.error || '', finish_reason: c.finishReason || '', prompt: c.prompt });
+    for (const s of await filtered(req.query)) {
+      for (const x of s.s3.submissions) {
+        const base = { session_id: s.id, pid: s.pid, submission: x.n, path: x.path, fail_reason: x.failReason || '', source: x.source, rule_hits: (x.ruleHits || []).join(';') };
+        if (!x.calls?.length) rows.push({ ...base, kind: '', attempt: '', at: x.at, model: '', response_model: '', latency_ms: '', valid: '', error: '', prompt: '' });
+        for (const c of x.calls || []) rows.push({ ...base, kind: c.kind, attempt: c.attempt, at: c.at, model: c.model || '', response_model: c.responseModel || '', latency_ms: c.latencyMs, valid: c.valid, error: c.error || '', prompt: c.prompt });
       }
     }
     res.attachment(`llm_log-${stamp()}.csv`).type('text/csv; charset=utf-8').send(toCsv(rows));

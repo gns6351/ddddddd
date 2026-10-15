@@ -21,9 +21,13 @@ export function loadSettings(overrides = {}) {
     apiKey: env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '',
     provider: 'gemini',
     model: env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    // 변환 점검 모델. 같은 모델은 자기 출력을 관대하게 볼 수 있어 다른 모델을 권장(비우면 변환 모델과 같음)
+    checkModel: env.CHECK_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     thinking: env.GEMINI_THINKING_LEVEL ?? 'low',
-    timeoutMs: Number(env.LLM_TIMEOUT_MS || 10000), // 명세: try당 10초, 최대 2회
-    transformPrompt: env.TRANSFORM_PROMPT || 'v3',
+    // 응답 지연 기준(호출 1회). 넘으면 실패 경로. 파일럿에서 정한다
+    timeoutMs: Number(env.LLM_TIMEOUT_MS || 15000),
+    transformPrompt: env.TRANSFORM_PROMPT || 'v4',
+    checkPrompt: env.CHECK_PROMPT || 'v1',
     // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)
     phase: oneOf(env.STUDY_PHASE, ['pilot', 'main'], 'pilot'),
     // 연구자 화면 비밀번호. 비워 두면 서버 PC(localhost)에서만 비밀번호 없이 열림
@@ -46,25 +50,25 @@ function readJson(file) {
 
 // 매 요청마다 읽는다. 파일럿 중 문구를 고치면 재시작 없이 반영되고, 세션에는 그 시점의 해시가 남는다.
 export function loadContent(contentDir) {
-  const study = readJson(path.join(contentDir, 'study.json'));
-  const strings = readJson(path.join(contentDir, 'ui', 'strings.json'));
-  const safety = readJson(path.join(contentDir, 'safety', 'rules.json'));
-  const scenarios = study.data.scenarios.map((id) => readJson(path.join(contentDir, 'scenarios', id, 'scenario.json')));
-  const hash = sha([study.raw, strings.raw, safety.raw, ...scenarios.map((x) => x.raw)].join('\n'));
-  const list = scenarios.map((x, i) => ({ ...x.data, faces: fs.existsSync(path.join(contentDir, 'scenarios', study.data.scenarios[i], 'faces')) }));
-  return {
-    study: study.data,
-    strings: strings.data,
-    safety: safety.data,
-    scenarios: list,
-    scenario: (id) => list.find((x) => x.id === id) || null,
-    hash,
+  const files = {
+    study: 'study.json', strings: path.join('ui', 'strings.json'), safety: path.join('safety', 'rules.json'),
+    character: path.join('character', 'character.json'), criteria: path.join('coding', 'criteria.json'),
   };
+  const out = {};
+  const raws = [];
+  for (const [k, f] of Object.entries(files)) {
+    const { data, raw } = readJson(path.join(contentDir, f));
+    out[k] = data;
+    raws.push(raw);
+  }
+  out.character.faces = fs.existsSync(path.join(contentDir, 'character', 'faces'));
+  out.hash = sha(raws.join('\n'));
+  return out;
 }
 
-// 프롬프트: content/prompts/transform/<버전>.md (머리말 + 본문)
-export function loadPrompt(contentDir, version) {
-  const dir = path.join(contentDir, 'prompts', 'transform');
+// 프롬프트: content/prompts/<kind>/<버전>.md (머리말 + 본문). kind = transform | check
+export function loadPrompt(contentDir, kind, version) {
+  const dir = path.join(contentDir, 'prompts', kind);
   const raw = fs.readFileSync(path.join(dir, `${version}.md`), 'utf8');
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
   const meta = {};
@@ -76,13 +80,14 @@ export function loadPrompt(contentDir, version) {
       if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
     }
   }
-  const schema = JSON.parse(fs.readFileSync(path.join(dir, meta.output_schema || 'schema.json'), 'utf8'));
-  const examples = JSON.parse(fs.readFileSync(path.join(dir, meta.examples || 'examples.json'), 'utf8'));
-  return { ref: `transform@${version}`, version, body, schema, examples, thinking: meta.thinking || null, temperature: meta.temperature === undefined ? null : Number(meta.temperature), hash: sha(raw + JSON.stringify(schema) + JSON.stringify(examples)) };
+  const schemaRaw = fs.readFileSync(path.join(dir, meta.schema || 'schema.json'), 'utf8');
+  return {
+    kind, version, ref: `${kind}@${version}`, body, schema: JSON.parse(schemaRaw),
+    temperature: meta.temperature === undefined ? null : Number(meta.temperature), hash: sha(raw + schemaRaw),
+  };
 }
 
 // 한 번에 치환: 조언 속 {{...}}는 다시 해석하지 않는다
 export function renderPrompt(prompt, vars) {
-  const examples = prompt.examples.map((e) => JSON.stringify(e)).join('\n');
-  return prompt.body.replace(/\{\{(\w+)\}\}/g, (_, k) => (k === 'examples' ? examples : String(vars[k] ?? '')));
+  return prompt.body.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''));
 }

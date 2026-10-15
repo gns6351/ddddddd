@@ -1,10 +1,42 @@
 {
-  "studyVersion": "draft-0.3",
-  "_note": "scenarios 순서대로 S2에 표시된다. adviceRounds = S4 조언 회차(모든 참가자 동일, 파일럿에서 세션이 35분을 넘으면 2로 줄임). 시나리오 파일은 content/scenarios/<id>/scenario.json",
-  "scenarios": [
-    "A-job",
-    "B-refusal",
-    "C-perfection"
-  ],
-  "adviceRounds": 3
+  "studyVersion": "v4.2-draft",
+  "_note": "명세 v4.2(간소화판). 캐릭터 1명 고정, 조언 1회. reasons = S7 이유 선택지(category는 화면에 보이지 않는 RQ2 분석 범주). check = 변환 점검의 형식 기준(실험 전 검증에서 확정할 값).",
+  "check": {
+    "_note": "[미확정] 실험 전 검증에서 확정. 변환문 길이가 원문의 maxLengthRatio배를 넘으면 형식 실패. 단 원문이 shortAdviceChars자 미만이면 상황절 때문에 길이가 크게 늘 수 있어 원문+shortExtraChars자까지 허용.",
+    "maxLengthRatio": 2.5,
+    "shortAdviceChars": 25,
+    "shortExtraChars": 45
+  },
+  "categories": {
+    "apply": "적용",
+    "source_trust": "출처 신뢰",
+    "evidence_distinction": "근거 기반 구분",
+    "expression": "표현 조정",
+    "fidelity": "충실도 문제",
+    "barrier": "실행 장벽",
+    "suspend": "판단 유보",
+    "self_exception": "자기 예외화",
+    "other": "귀납 코딩"
+  },
+  "reasons": {
+    "as_is": [
+      { "id": "as_fit", "text": "내 상황에도 그대로 맞아서", "category": "apply" },
+      { "id": "as_trust", "text": "내가 한 말이라 믿을 수 있어서", "category": "source_trust" }
+    ],
+    "edited": [
+      { "id": "ed_diff", "text": "내 상황과 다른 부분이 있어서", "category": "evidence_distinction", "line": "무엇이 다른지 한 줄 (선택)" },
+      { "id": "ed_expr", "text": "표현이 나한테 와닿지 않아서", "category": "expression" },
+      { "id": "ed_fid", "text": "뜻이 내가 한 말과 달라서", "category": "fidelity" }
+    ],
+    "later": [
+      { "id": "la_hard", "text": "맞는 말이지만 지금은 실천하기 어려워서", "category": "barrier" },
+      { "id": "la_think", "text": "더 생각해 봐야 할 것 같아서", "category": "suspend" }
+    ],
+    "not_fit": [
+      { "id": "nf_diff", "text": "내 상황이 실제로 달라서", "category": "evidence_distinction", "line": "무엇이 다른지 한 줄 (선택)" },
+      { "id": "nf_except", "text": "남한텐 맞아도 나한테는 잘 안 통할 것 같아서", "category": "self_exception" },
+      { "id": "nf_fid", "text": "뜻이 내가 한 말과 달라서", "category": "fidelity" }
+    ],
+    "other": { "id": "other", "text": "다른 이유", "category": "other", "line": "어떤 이유인지 한 줄", "lineRequired": true }
+  }
 }

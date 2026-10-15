@@ -1,0 +1,90 @@
+// S3 조언 처리: 규칙 사전 검사 → 조언 판정·자기지향 변환(AI 1회) → 변환 점검(형식 규칙 + AI 의미 점검)
+//   점검 실패 → 다시 변환 1회 → 또 실패하면 실패 경로(check_failed)
+//   AI 오류·응답 지연 → 실패 경로(ai_error)
+// 결과 path: ok | not_advice | fail  (fail이면 failReason: risk | blame | ai_error | check_failed)
+// AI로 보내는 것은 조언 원문과 그 변환문뿐이다.
+import { renderPrompt } from './config.js';
+import { judgeTransform, judgeCheck } from './llm.js';
+
+const cp = (s) => [...String(s ?? '')].length;
+
+// 2인칭이 남았는지: 앞뒤가 한글이 아닌 '너/넌/널/네가/니가/당신…'만 본다('너무'·'너머'는 제외)
+const SECOND_PERSON = /(?<![가-힣])(너(?:는|를|의|도|한테|에게|랑|만|가|희|희들)?|넌|널|네가|니가|당신(?:은|이|의|도|을|에게|한테|께서)?)(?![가-힣])/u;
+
+// 형식 점검(규칙): 빈 출력 · 2인칭 남음 · 지나친 길이 증가
+export function formatCheck(advice, self, rules = {}) {
+  const errors = [];
+  const text = String(self ?? '').trim();
+  if (!text) errors.push('empty');
+  if (text && SECOND_PERSON.test(text)) errors.push('second_person');
+  const a = cp(String(advice).trim());
+  const b = cp(text);
+  const ratio = Number(rules.maxLengthRatio) || 2.5;
+  const shortN = Number(rules.shortAdviceChars) || 0;
+  const extra = Number(rules.shortExtraChars) || 0;
+  const limit = a < shortN ? Math.max(a * ratio, a + extra) : a * ratio;
+  if (b > limit) errors.push('too_long');
+  return { pass: errors.length === 0, errors, length: { advice: a, self: b, limit: Math.round(limit) } };
+}
+
+function withTimeout(promise, ms) {
+  let t;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { t = setTimeout(() => reject(Object.assign(new Error(`timeout ${ms}ms`), { name: 'AbortError' })), ms); }),
+  ]).finally(() => clearTimeout(t));
+}
+const errCode = (err) => (err?.name === 'AbortError' || /timed? ?out|timeout|aborted/i.test(String(err?.message)) ? 'TIMEOUT' : err?.status ? `HTTP_${err.status}` : 'NETWORK');
+
+export async function processAdvice({ llm, prompts, character, advice, safety, checkRules, timeoutMs = 15000 }) {
+  const started = Date.now();
+  const out = { path: null, verdict: null, failReason: null, failDetail: null, source: llm.mode, ruleHits: [], self: null, transforms: [], checks: [], retransformed: false, calls: [] };
+  const done = (extra) => Object.assign(out, extra, { latencyMs: Date.now() - started });
+
+  const rule = safety.advice(advice);
+  if (rule.risk.length || rule.blame.length) {
+    const verdict = rule.risk.length ? 'risk' : 'blame';
+    return done({ path: 'fail', verdict, failReason: verdict, source: 'rule', ruleHits: [...rule.risk, ...rule.blame] });
+  }
+
+  // AI 한 번 호출 + 기록
+  async function ask(kind, prompt, vars, attempt, judge) {
+    const t0 = Date.now();
+    const base = { kind, attempt, at: new Date(t0).toISOString(), llmMode: llm.mode, prompt: `${prompt.ref}@${prompt.hash}` };
+    try {
+      const { raw, meta } = await withTimeout(llm.call(kind, { promptText: renderPrompt(prompt, vars), schema: prompt.schema, temperature: prompt.temperature, mockInput: advice, attempt }), timeoutMs);
+      const j = judge(raw);
+      out.calls.push({ ...base, ...meta, latencyMs: Date.now() - t0, raw, valid: j.valid, error: j.error || null });
+      return j.valid ? j : { error: j.error };
+    } catch (err) {
+      out.calls.push({ ...base, latencyMs: Date.now() - t0, valid: false, error: errCode(err), message: String(err?.message || err).slice(0, 300) });
+      return { error: errCode(err) };
+    }
+  }
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const tr = await ask('transform', prompts.transform, { character_situation: `${character.situation} "${character.automatic_thought}"`, advice }, attempt, judgeTransform);
+    if (tr.error) return done({ path: 'fail', failReason: 'ai_error', failDetail: tr.error });
+    out.transforms.push({ attempt, verdict: tr.verdict, self: tr.self });
+    if (attempt === 1) out.verdict = tr.verdict;
+    if (tr.verdict !== 'ok') {
+      if (attempt === 1) return done(tr.verdict === 'not_advice' ? { path: 'not_advice' } : { path: 'fail', failReason: tr.verdict });
+      return done({ path: 'fail', failReason: 'check_failed', failDetail: `retransform_${tr.verdict}` }); // 다시 변환했더니 판정이 바뀜
+    }
+
+    const format = formatCheck(advice, tr.self, checkRules);
+    const check = { attempt, format, meaning: null, result: null };
+    out.checks.push(check);
+    if (!format.pass) {
+      check.result = 'format_fail';
+    } else {
+      const m = await ask('check', prompts.check, { advice, self: tr.self }, attempt, judgeCheck);
+      if (m.error) { check.result = 'check_error'; return done({ path: 'fail', failReason: 'ai_error', failDetail: `check_${m.error}` }); }
+      check.meaning = { reversal: m.reversal, addition: m.addition, note: m.note };
+      check.result = m.reversal || m.addition ? 'meaning_fail' : 'pass';
+    }
+    if (check.result === 'pass') return done({ path: 'ok', self: tr.self });
+    if (attempt === 1) out.retransformed = true;
+  }
+  return done({ path: 'fail', failReason: 'check_failed', failDetail: out.checks.at(-1).result });
+}

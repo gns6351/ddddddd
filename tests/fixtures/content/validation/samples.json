@@ -1,0 +1,9 @@
+{
+  "_status": "[TEST] 테스트 전용",
+  "items": [
+    { "id": "t1", "source": "researcher", "style": "[TEST]", "advice": "[TEST] 작은 것부터 해 봐" },
+    { "id": "t2", "source": "researcher", "style": "[TEST]", "advice": "[TEST] 쉬어도 돼 #reversal" },
+    { "id": "t3", "source": "persona", "style": "[TEST]", "advice": "[TEST] 힘내 #notadvice" },
+    { "id": "t4", "source": "persona", "style": "[TEST]", "advice": "[TEST] 다시 봐 #you" }
+  ]
+}

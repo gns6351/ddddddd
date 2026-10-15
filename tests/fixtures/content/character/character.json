@@ -1,0 +1,18 @@
+{
+  "_status": "[TEST] 테스트 전용 가상 캐릭터. 실제 연구 콘텐츠가 아님",
+  "id": "test",
+  "name": "테스트",
+  "title": "[TEST]",
+  "situation": "[TEST] 가상 상황",
+  "automatic_thought": "[TEST] 가상 자동적 사고",
+  "expressions": ["neutral", "sad"],
+  "opening": { "text": "[TEST] 첫 대사", "expression": "sad" },
+  "choices": [
+    { "id": "t-empathy", "attitude": "empathy", "text": "[TEST] 공감 선택지", "reply": "[TEST] 답 A", "expression": "sad" },
+    { "id": "t-specify", "attitude": "specify", "text": "[TEST] 구체화 선택지", "reply": "[TEST] 답 B", "expression": "sad" },
+    { "id": "t-explore", "attitude": "explore", "text": "[TEST] 탐색 선택지", "reply": "[TEST] 답 C", "expression": "sad" }
+  ],
+  "question": { "text": "[TEST] 질문", "expression": "neutral" },
+  "reprompt": { "text": "[TEST] 재질문", "expression": "neutral" },
+  "closing": { "text": "[TEST] 마무리", "expression": "neutral" }
+}

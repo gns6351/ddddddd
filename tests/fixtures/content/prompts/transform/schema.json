@@ -1,13 +1,9 @@
 {
   "type": "object",
   "properties": {
-    "is_advice": { "type": "boolean" },
-    "unsafe": { "type": "boolean" },
-    "blaming": { "type": "boolean" },
-    "type": { "anyOf": [ { "type": "string", "enum": ["대안적 사고", "행동 제안", "혼합"] }, { "type": "null" } ] },
-    "core": { "type": "array", "maxItems": 2, "items": { "type": "string" } },
+    "verdict": { "type": "string", "enum": ["ok", "not_advice", "blame", "risk"] },
     "self": { "type": "string" }
   },
-  "required": ["is_advice", "unsafe", "blaming", "type", "core", "self"],
+  "required": ["verdict", "self"],
   "additionalProperties": false
 }

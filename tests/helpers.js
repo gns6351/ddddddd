@@ -32,16 +32,26 @@ export async function boot(overrides = {}, deps = {}) {
   };
 }
 
-// S1 → S4 직전까지
-export async function toAdvice(t, pid = 'T01') {
-  let r = await t.post('/api/sessions', { participantId: pid, consent: true });
+// S1 → S3(조언 입력) 직전까지
+export async function toAdvice(t, pid = 'T01', relevance = 4) {
+  let r = await t.post('/api/sessions', { participantId: pid, consent: true, similar: true, relevance });
   const id = r.body.id;
-  r = await t.post(`/api/sessions/${id}/pick`, { character_id: 'T-alpha', has_experience: true, relevance: 3 });
-  for (let turn = 1; turn <= 3; turn += 1) r = await t.post(`/api/sessions/${id}/dialogue`, { turn, choice_id: r.body.choices[0].id });
+  r = await t.post(`/api/sessions/${id}/dialogue`, { choice_id: r.body.choices[1].id });
   return { id, view: r.body };
 }
 
-export const S5 = { situation: '[TEST] 상황', emotion: '[TEST] 감정', automatic_thought: '[TEST] 생각', belief_pre: 80, view_pre: '[TEST] 해석' };
+// ok 경로를 끝까지: opts로 각 단계 응답을 바꾼다
+export async function runOk(t, pid, o = {}) {
+  const { id } = await toAdvice(t, pid);
+  let r = await t.post(`/api/sessions/${id}/advice`, { advice: o.advice || '[TEST] 하나씩 해 봐' });
+  r = await t.post(`/api/sessions/${id}/experience`, { thought: '[TEST] 그때 든 생각', situation: o.situation ?? null });
+  r = await t.post(`/api/sessions/${id}/returned`, { fidelity: o.fidelity || 'good', edit: o.edit ?? null });
+  r = await t.post(`/api/sessions/${id}/decision`, { decision: o.decision || 'as_is', final: o.final ?? null });
+  r = await t.post(`/api/sessions/${id}/reason`, { reason: o.reason || 'as_fit', text: o.text ?? null });
+  r = await t.post(`/api/sessions/${id}/survey`, { q10: o.q10 ?? 4, q11: o.q11 ?? 2 });
+  r = await t.post(`/api/sessions/${id}/finish`, { withdraw: o.withdraw ?? false });
+  return { id, view: r.body };
+}
 
 // 따옴표를 처리하는 간단한 CSV 읽기 → [{열: 값}]
 export function parseCsv(text) {
@@ -49,7 +59,7 @@ export function parseCsv(text) {
   let row = [];
   let cell = '';
   let q = false;
-  const s = text.replace(/^\uFEFF/, '');
+  const s = text.replace(/^﻿/, '');
   for (let i = 0; i < s.length; i += 1) {
     const c = s[i];
     if (q) {

@@ -1,104 +1,85 @@
-// 연구자용 내보내기: 한 사람당 한 행 CSV
-import { LIKERT, finalAttempt } from './flow.js';
-import { convert } from './rulebased.js';
-import { stepSeconds } from './research.js';
+// 내보내기: 한 사람당 한 행 CSV (명세 v4.2 기록 데이터 필드)
+import { finalSubmission } from './flow.js';
+import { resolve } from './coding.js';
 
-const cp = (v) => (typeof v === 'string' ? [...v.trim()].length : '');
-const TEXT_FIELDS = ['situation', 'emotion', 'automatic_thought', 'view_pre', 'edited_self', 'evidence_for', 'evidence_against', 'common', 'difference', 'reason', 'modified_text', 'view_post'];
-
-const minutes = (a, b) => (a && b ? ((new Date(b) - new Date(a)) / 60000).toFixed(1) : '');
 const val = (v) => (v == null ? '' : v);
+const STEPS = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9'];
 
-export function flattenSession(s, rules) {
-  const fa = finalAttempt(s);
-  const first = s.advice.attempts[0];
-  const lastCall = fa?.calls?.at(-1);
+export function flattenSession(s, codes = {}) {
+  const subs = s.s3.submissions;
+  const fin = finalSubmission(s);
+  const lastCall = fin?.calls?.filter((c) => c.kind === 'transform').at(-1);
+  const firstCheck = fin?.checks?.[0];
   const row = {
+    pid: s.pid,
     session_id: s.id,
-    participant_id: s.participantId,
-    created_at: s.createdAt,
+    session_start: s.createdAt,
     finished_at: val(s.finishedAt),
-    stage: s.stage,
     phase: s.phase || 'pilot',
-    excluded_d: s.excluded?.excluded ? true : '',
+    excluded: s.excluded?.excluded ? true : '',
     exclude_reason: s.excluded?.reason || '',
     end_type: val(s.endType),
-    withdrawn_at_stage: val(s.withdrawnAt),
+    stopped_at: val(s.stoppedAt),
+    relevance: val(s.screen?.relevance),
+    s2_choice: val(s.s2?.attitude),
+    advice_raw: subs.map((x) => x.text).join('\n'),
+    advice_raw_1: val(subs[0]?.text),
+    advice_raw_2: val(subs[1]?.text),
+    advice_verdict: val(fin?.verdict ?? (fin?.path === 'fail' ? fin.failReason : null)),
+    advice_verdict_1: val(subs[0] ? subs[0].verdict ?? subs[0].failReason : null),
+    reprompt_used: s.s3.repromptUsed,
+    transformed: val(fin?.self ?? fin?.transforms?.at(-1)?.self),
+    transformed_first: val(fin?.transforms?.[0]?.self),
+    check: val(firstCheck?.result),
+    check_final: val(fin?.checks?.at(-1)?.result),
+    check_detail: fin?.checks?.map((c) => `${c.attempt}:${c.result}${c.format?.errors?.length ? `[${c.format.errors.join('|')}]` : ''}${c.meaning?.reversal ? '[reversal]' : ''}${c.meaning?.addition ? '[addition]' : ''}`).join(';') || '',
+    retransformed: val(fin?.retransformed),
+    s4_thought: val(s.s4?.thought),
+    s4_situation: val(s.s4?.situation),
+    s5_fidelity: val(s.s5?.fidelity),
+    s5_edit_before: val(s.s5?.editBefore),
+    s5_edit_after: val(s.s5?.editAfter),
+    s6_sentence: val(s.s6?.sentence),
+    s6_decision: val(s.s6?.decision),
+    s6_final: val(s.s6?.final),
+    s7_reason: val(s.s7?.reasonId),
+    s7_category: val(s.s7?.category),
+    s7_category_coded: val(resolve(codes.reason?.items?.[s.id]).value),
+    s7_text: val(s.s7?.text),
+    q10: val(s.s8?.q10),
+    q11: val(s.s8?.q11),
+    withdraw: s.s9 ? s.s9.withdraw : '',
+    path: val(s.path),
+    fail_reason: val(s.failReason),
+    fail_step: val(s.failStep),
+    transform_errors_coded: (() => { const v = resolve(codes.transform?.items?.[s.id]).value; return Array.isArray(v) ? (v.length ? v.join(';') : 'none') : ''; })(),
+    s4_reviewed: s.reviewed ? true : '',
     llm_mode: s.llmMode,
-    model: s.model,
+    model: val(s.model),
     response_model: val(lastCall?.responseModel),
-    prompt: `${s.prompt.ref}@${s.prompt.hash}`,
+    check_model: val(s.checkModel),
+    prompt_transform: val(s.prompts?.transform),
+    prompt_check: val(s.prompts?.check),
+    ai_latency_ms: val(fin?.latencyMs),
     study_version: s.studyVersion,
     content_hash: s.contentHash,
-    checked_characters: s.pick.checks.map((k) => `${k.characterId}:${k.hasExperience ? 'yes' : 'no'}`).join(';'),
-    character_id: val(s.pick.characterId),
-    relevance: val(s.pick.relevance),
-    dialogue_choices: s.dialogue.map((d) => d.choiceId).join(';'),
-    dialogue_attitudes: s.dialogue.map((d) => d.attitude || '').join(';'),
-    fact_ids: [...new Set(s.dialogue.flatMap((d) => d.factIds || []))].join(';'),
-    advice_rounds_planned: s.adviceRounds ?? '',
-    advice_attempts: s.advice.attempts.length,
-    advice_1: val(first?.text),
-    outcome_1: val(first?.outcome),
-    advice_final: val(fa?.text),
-    outcome: val(s.advice.outcome),
-    outcome_source: val(fa?.source),
-    safety_source: val(fa?.safetySource),
-    rule_hits: (fa?.ruleHits || []).join(';'),
-    advice_type: val(fa?.result?.type),
-    core: (fa?.result?.core || []).join(' | '),
-    self: val(fa?.result?.self),
-    rule_self: rules && s.advice.outcome === 'ok' ? convert(rules, fa.text).sentence : '',
-    llm_calls: s.advice.attempts.reduce((a, x) => a + (x.calls?.length || 0), 0),
-    llm_errors: s.advice.attempts.reduce((a, x) => a + (x.calls || []).filter((c) => !c.valid).length, 0),
-    llm_latency_ms: val(lastCall?.latencyMs),
-    situation: val(s.reflectPre?.situation),
-    emotion: val(s.reflectPre?.emotion),
-    automatic_thought: val(s.reflectPre?.automatic_thought),
-    belief_pre: val(s.reflectPre?.belief_pre),
-    view_pre: val(s.reflectPre?.view_pre),
-    fidelity: val(s.returned?.fidelity),
-    edited_self: val(s.returned?.edited_self),
-    final_self: val(s.returned?.final_self),
-    evidence_for: val(s.evidence?.evidence_for),
-    for_none: val(s.evidence?.for_none),
-    evidence_against: val(s.evidence?.evidence_against),
-    against_none: val(s.evidence?.against_none),
-    common: val(s.judge?.common),
-    common_none: val(s.judge?.common_none),
-    difference: val(s.judge?.difference),
-    difference_none: val(s.judge?.difference_none),
-    verdict: val(s.judge?.verdict),
-    reason: val(s.judge?.reason),
-    modified_text: val(s.judge?.modified_text),
-    view_post: val(s.reflectPost?.view_post),
-    belief_post: val(s.reflectPost?.belief_post),
-    belief_change: s.reflectPre && s.reflectPost ? s.reflectPost.belief_post - s.reflectPre.belief_pre : '',
   };
-  for (let i = 0; i < 6; i += 1) row[`advice_r${i + 1}`] = val(s.advice.rounds?.[i]?.text);
-  for (const q of LIKERT) row[q] = s.survey ? (s.survey.shown_items.includes(q) ? s.survey[q] : 'NA') : '';
-  const secs = stepSeconds(s);
-  for (const st of ['S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10']) row[`sec_${st}`] = secs[st] ?? '';
-  const src = { ...s.reflectPre, ...s.returned, ...s.evidence, ...s.judge, ...s.reflectPost };
-  row.len_advice_final = cp(fa?.text);
-  for (const f of TEXT_FIELDS) row[`len_${f}`] = cp(src[f]);
-  Object.assign(row, {
-    interview_themes: (s.interview?.themes || []).join(';'),
-    safety_flags: s.safetyFlags.length,
-    safety_rules: [...new Set(s.safetyFlags.flatMap((f) => f.rules))].join(';'),
-    total_min: minutes(s.createdAt, s.finishedAt),
-  });
+  for (const st of STEPS) {
+    row[`${st}_enter`] = val(s.stepTimes?.[st]?.enter);
+    row[`${st}_done`] = val(s.stepTimes?.[st]?.done);
+  }
   return row;
 }
 
 function cell(v) {
-  let s = v == null ? '' : String(v);
-  if (/^[=+\-@\t]/.test(s) && !/^-?\d/.test(s)) s = `'${s}`; // 엑셀 수식으로 실행되지 않게
-  return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+  const t = v == null ? '' : String(v);
+  // 엑셀 수식 주입 방지
+  const safe = /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 export function toCsv(rows) {
   if (!rows.length) return '﻿';
-  const headers = Object.keys(rows[0]);
-  return `﻿${[headers.join(','), ...rows.map((r) => headers.map((h) => cell(r[h])).join(','))].join('\r\n')}`;
+  const head = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  return `﻿${[head.map(cell).join(','), ...rows.map((r) => head.map((k) => cell(r[k])).join(','))].join('\r\n')}\r\n`;
 }

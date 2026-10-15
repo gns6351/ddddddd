@@ -1,29 +1,16 @@
-// 연구 절차: 단계 순서와 입력 검증. 다음 화면은 서버가 정한다.
-//   S1 동의 → S2 캐릭터 → S3 대화(3턴) → S4 조언(AI 변환) → S5 내 경험
-//   → (변환 ok) S6 돌아온 말 → S7 근거 → S8 적용 → S9 다시 보기 → S10 설문 → S11 끝
-//   → (변환 ok 아님) S7 근거 → S9 → S10(일부 문항) → S11
+// 연구 절차(명세 v4.2): 단계 순서와 입력 검증. 다음 화면은 서버가 정한다. 앞으로만 진행한다.
+//   S1 시작(동의·사전 선별) → S2 고정 대화 → S3 조언(AI 판정·변환·점검)
+//   → (ok) S4 내 경험 → S5 돌아온 말 → S6 나에게 할 말 → S7 이유 → S8 설문 → S9 마무리 → END
+//   → (실패) S9 마무리 → END
+//   그만하기: 어느 단계에서든 S9 마무리(디브리핑·철회 선택)로 간다
 import crypto from 'node:crypto';
 
-export const STAGES = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11'];
-export const LIKERT = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'q11'];
-export const shownItemsFor = (outcome) => (outcome === 'ok' ? [...LIKERT] : ['q4', 'q5', 'q6', 'q7', 'q11']);
+export const STAGES = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'END'];
+export const DECISIONS = ['as_is', 'edited', 'later', 'not_fit'];
+export const FIDELITY = ['good', 'some', 'much'];
+export const LIKERT = ['q10', 'q11'];
 
-const LIMITS = {
-  advice: [1, 2000],
-  situation: [2, 2000], emotion: [2, 500], automatic_thought: [2, 500], view_pre: [2, 2000],
-  edited_self: [2, 1000],
-  evidence_for: [2, 2000], evidence_against: [2, 2000],
-  common: [2, 1000], difference: [2, 1000], reason: [2, 2000], modified_text: [2, 1000],
-  view_post: [2, 2000],
-};
-export const URGENT_FIELDS = {
-  S4: ['advice'],
-  S5: ['situation', 'emotion', 'automatic_thought', 'view_pre'],
-  S6: ['edited_self'],
-  S7: ['evidence_for', 'evidence_against'],
-  S8: ['common', 'difference', 'reason', 'modified_text'],
-  S9: ['view_post'],
-};
+const LIMITS = { advice: [1, 1000], thought: [2, 200], situation: [2, 200], edit: [2, 300], final: [2, 300], reason_text: [2, 200] };
 
 export class FlowError extends Error {
   constructor(message, status = 400, extra = {}) {
@@ -34,379 +21,238 @@ export class FlowError extends Error {
 }
 
 const now = () => new Date().toISOString();
-const cpLength = (s) => [...s].length;
+const cp = (s) => [...s].length;
 const blank = (v) => v == null || (typeof v === 'string' && !v.trim());
+const oneLine = (v) => v.replace(/\s*[\r\n]+\s*/g, ' ').trim();
 
-// 입력 검사: 처음 걸린 항목 하나를 알려 준다
-function checker(stage) {
-  return {
-    text(field, v, { optional = false } = {}) {
-      if (blank(v)) {
-        if (optional) return null;
-        throw new FlowError('필수 항목이 비어 있어요', 422, { field, reason: 'required' });
-      }
-      if (typeof v !== 'string') throw new FlowError('글로 적어 주세요', 422, { field, reason: 'required' });
-      const t = v.trim();
-      const [min, max] = LIMITS[field];
-      const length = cpLength(t);
-      if (length < min) throw new FlowError(`${min}자 이상 써 주세요`, 422, { field, reason: 'too_short', min, max });
-      if (length > max) throw new FlowError(`${max}자까지 쓸 수 있어요`, 422, { field, reason: 'too_long', min, max });
-      return t;
-    },
-    int(field, v, min, max) {
-      if (!Number.isInteger(v) || v < min || v > max) throw new FlowError('값을 골라 주세요', 422, { field, reason: 'required', min, max });
-      return v;
-    },
-    oneOf(field, v, list) {
-      if (!list.includes(v)) throw new FlowError('하나를 골라 주세요', 422, { field, reason: 'required' });
-      return v;
-    },
-    // 글 또는 "떠오르지 않아요"
-    textOrNone(field, noneField, d) {
-      if (d[noneField] === true) return { [field]: '', [noneField]: true };
-      return { [field]: this.text(field, d[field]), [noneField]: false };
-    },
-    stage,
-  };
+function text(field, v, { optional = false, single = false } = {}) {
+  if (blank(v)) {
+    if (optional) return null;
+    throw new FlowError('필수 항목이 비어 있어요', 422, { field, reason: 'required' });
+  }
+  if (typeof v !== 'string') throw new FlowError('글로 적어 주세요', 422, { field, reason: 'required' });
+  const t = single ? oneLine(v) : v.trim();
+  const [min, max] = LIMITS[field];
+  if (cp(t) < min) throw new FlowError(`${min}자 이상 써 주세요`, 422, { field, reason: 'too_short', min, max });
+  if (cp(t) > max) throw new FlowError(`${max}자까지 쓸 수 있어요`, 422, { field, reason: 'too_long', min, max });
+  return t;
+}
+function int(field, v, min, max) {
+  if (!Number.isInteger(v) || v < min || v > max) throw new FlowError('값을 골라 주세요', 422, { field, reason: 'required' });
+  return v;
+}
+function oneOf(field, v, list) {
+  if (!list.includes(v)) throw new FlowError('하나를 골라 주세요', 422, { field, reason: 'required' });
+  return v;
 }
 
-export function newSession({ participantId, settings, content, prompt }) {
+// ---- 세션 ----
+export function newSession({ participantId, settings, content, prompts, screen, s1EnteredAt }) {
   const at = now();
   const s = {
     id: crypto.randomUUID(),
-    participantId,
+    pid: participantId,
     createdAt: at,
     updatedAt: at,
-    stage: 'S2',
+    stage: 'S1',
     endType: null,
     finishedAt: null,
-    consentAt: at,
+    path: null,
+    failReason: null,
+    failStep: null,
     phase: settings.phase,
     excluded: null,
-    interview: null,
+    reviewed: null,
     llmMode: settings.llmMode,
-    provider: settings.provider,
     model: settings.model,
-    thinking: settings.thinking || null,
+    checkModel: settings.checkModel,
     studyVersion: content.study.studyVersion,
     contentHash: content.hash,
-    prompt: { ref: prompt.ref, hash: prompt.hash },
-    stageTimes: { S1: at, S2: at },
-    pick: { checks: [], characterId: null, relevance: null },
-    dialogue: [],
-    adviceRounds: Math.min(5, Math.max(1, Number(content.study.adviceRounds) || 1)),
-    advice: { rounds: [], attempts: [], outcome: null, final: null },
-    reflectPre: null,
-    returned: null,
-    evidence: null,
-    judge: null,
-    reflectPost: null,
-    survey: null,
-    safetyFlags: [],
-    events: [],
+    prompts: { transform: `${prompts.transform.ref}@${prompts.transform.hash}`, check: `${prompts.check.ref}@${prompts.check.hash}` },
+    stepTimes: { S1: { enter: s1EnteredAt || at, done: at } },
+    consentAt: at,
+    screen,
+    s2: null,
+    s3: { submissions: [], repromptUsed: false },
+    s4: null,
+    s5: null,
+    s6: null,
+    s7: null,
+    s8: null,
+    s9: null,
   };
-  addEvent(s, 'step_submit', { stage: 'S1' });
-  addEvent(s, 'step_enter', { stage: 'S2' });
+  if (!screen.similar) {
+    s.endType = 'screened_out';
+    moveTo(s, 'END');
+  } else moveTo(s, 'S2');
   return s;
 }
 
-// 이벤트 기록 (명세 §7 이벤트 종류). payload에는 자유서술 원문을 넣지 않는다(유형·선택값·글자 수·변경 여부만).
-export function addEvent(s, type, payload = {}, { eventId = null, clientTs = null, source = 'server' } = {}) {
-  s.events.push({ id: eventId || crypto.randomUUID(), type, stage: s.stage, payload, source, clientTs, at: now() });
-}
-
-const len = (v) => (typeof v === 'string' ? cpLength(v.trim()) : 0);
-function submitted(s, stage, texts = {}) {
-  addEvent(s, 'step_submit', { stage, lengths: Object.fromEntries(Object.entries(texts).map(([k, v]) => [k, len(v)])) });
-}
-
 function moveTo(s, stage) {
+  const at = now();
+  if (s.stepTimes[s.stage] && !s.stepTimes[s.stage].done) s.stepTimes[s.stage].done = at;
   s.stage = stage;
-  s.stageTimes[stage] = now();
-  if (stage === 'S11') s.finishedAt = s.stageTimes.S11;
-  addEvent(s, 'step_enter', { stage });
+  s.stepTimes[stage] = { enter: at, done: stage === 'END' ? at : null };
+  if (stage === 'END') s.finishedAt = at;
 }
 
 export function requireStage(s, stage) {
   if (s.stage !== stage) throw new FlowError('이미 지난 단계예요. 화면을 다시 불러올게요.', 409, { stage: s.stage });
 }
 
-// 위험 신호 키워드: 기록만 하고 진행은 계속
-export function scanUrgent(s, safety, stage, data) {
-  const hits = [];
-  for (const field of URGENT_FIELDS[stage] || []) {
-    const rules = data[field] ? safety.urgent(data[field]) : [];
-    if (rules.length) hits.push({ stage, field, rules, at: now() });
-  }
-  s.safetyFlags.push(...hits);
-  return hits.length > 0;
-}
-
 // ---- 단계별 처리 ----
-
-export function doPick(s, d, content) {
-  requireStage(s, 'S2');
-  const c = checker('S2');
-  const sc = content.scenario(d.character_id);
-  if (!sc) throw new FlowError('캐릭터를 골라 주세요', 422, { field: 'character_id', reason: 'required' });
-  if (s.pick.checks.some((x) => x.characterId === sc.id)) throw new FlowError('이미 확인한 캐릭터예요', 409);
-  const has = c.oneOf('has_experience', d.has_experience, [true, false]);
-  const relevance = has ? c.int('relevance', d.relevance, 1, 5) : null;
-  s.pick.checks.push({ characterId: sc.id, hasExperience: has, relevance, at: now() });
-  submitted(s, 'S2');
-  if (!has) addEvent(s, 'experience_none', { character_id: sc.id });
-  if (has) {
-    s.pick.characterId = sc.id;
-    s.pick.relevance = relevance;
-    moveTo(s, 'S3');
-  } else if (content.scenarios.every((x) => s.pick.checks.some((k) => k.characterId === x.id))) {
-    s.endType = 'no_experience';
-    moveTo(s, 'S11');
-  }
+export function validateScreen(d) {
+  const similar = oneOf('similar', d.similar, [true, false]);
+  return { similar, relevance: similar ? int('relevance', d.relevance, 1, 5) : null };
 }
 
 export function doDialogue(s, d, content) {
+  requireStage(s, 'S2');
+  const choice = content.character.choices.find((x) => x.id === d.choice_id);
+  if (!choice) throw new FlowError('말을 하나 골라 주세요', 422, { field: 'choice_id', reason: 'required' });
+  s.s2 = { choiceId: choice.id, attitude: choice.attitude, at: now() };
+  moveTo(s, 'S3');
+}
+
+export const validateAdvice = (d) => text('advice', d.advice);
+
+// S3 결과 기록. not_advice는 한 번만 재질문하고, 두 번째도 not_advice면 실패 경로
+export function applyAdvice(s, advice, result, content, expectN) {
   requireStage(s, 'S3');
-  const sc = content.scenario(s.pick.characterId);
-  const turn = s.dialogue.length + 1;
-  if (d.turn !== turn) throw new FlowError('이미 지난 질문이에요. 화면을 다시 불러올게요.', 409);
-  const t = sc.dialogue.turns[turn - 1];
-  const choice = t.choices.find((x) => x.id === d.choice_id);
-  if (!choice) throw new FlowError('질문을 하나 골라 주세요', 422, { field: 'choice_id', reason: 'required' });
-  // 노출 사실 = 그 턴의 공통 대사(lead) 사실 + 고른 선택지의 사실
-  const factIds = [...new Set([...(t.lead_fact_ids || []), ...(choice.fact_ids || [])])];
-  s.dialogue.push({ turn, choiceId: choice.id, attitude: choice.attitude || null, question: choice.text, reply: choice.reply, factIds, at: now() });
-  addEvent(s, 'choice_select', { turn, choice_id: choice.id, attitude: choice.attitude || null, fact_ids: factIds });
-  if (turn === sc.dialogue.turns.length) moveTo(s, 'S4');
+  if (s.s3.submissions.length !== expectN) throw new FlowError('이미 처리된 조언이에요. 화면을 다시 불러올게요.', 409);
+  const c = content.character;
+  s.s3.submissions.push({ n: expectN + 1, text: advice, at: now(), reprompt: s.s3.repromptUsed, ...result });
+  if (result.path === 'not_advice' && !s.s3.repromptUsed) {
+    s.s3.repromptUsed = true;
+    return { reply: c.reprompt };
+  }
+  if (result.path === 'ok') {
+    s.path = 'ok';
+    moveTo(s, 'S4');
+  } else {
+    s.path = 'fail';
+    s.failReason = result.path === 'not_advice' ? 'not_advice' : result.failReason;
+    s.failStep = 'S3';
+    moveTo(s, 'S9');
+  }
+  return { reply: c.closing };
 }
 
-export function validateAdvice(d) {
-  return checker('S4').text('advice', d.advice);
-}
+// 마지막으로 처리된 조언 제출(돌려줄 문장이 있는 것)
+export const finalSubmission = (s) => s.s3.submissions.at(-1) || null;
 
-// ---- S4: 정해진 횟수(adviceRounds)만큼 조언하고, 마지막에 합쳐서 한 번 변환한다 ----
-// 회차 사이 캐릭터 대사는 조언 내용과 무관한 고정 후속 고민(followups), 마지막은 중립 마무리(final_reply).
-export function adviceState(s) {
-  s.advice.rounds ||= []; // 이 기능 전에 만든 세션은 회차 기록이 없다(1회로 취급)
-  const R = s.adviceRounds || 1;
-  const n = s.advice.rounds.length;
-  const retry = s.advice.attempts.length === 1 && s.advice.attempts[0].outcome === 'not_advice';
-  return { R, n, retry, final: retry || (s.advice.attempts.length === 0 && n >= R - 1) };
-}
-
-function replyFor(sc, roundNo, final) {
-  const fu = sc.dialogue.followups || [];
-  const r = final || !fu.length ? sc.dialogue.final_reply : fu[Math.min(roundNo, fu.length) - 1];
-  return r ? { text: r.text, expression: r.expression || 'neutral' } : null;
-}
-
-// 합친 조언: 저장·코딩용은 줄바꿈으로, AI 입력은 번호를 붙여서
-export const combinedAdvice = (texts) => texts.join('\n');
-export const numberedAdvice = (texts) => (texts.length > 1 ? texts.map((t, i) => `${i + 1}) ${t}`).join('\n') : texts[0]);
-
-// 마지막이 아닌 회차: 기록하고 캐릭터의 고정 후속 고민을 붙인다(AI 호출 없음)
-export function addAdviceRound(s, text, content) {
+export function doExperience(s, d) {
   requireStage(s, 'S4');
-  const st = adviceState(s);
-  if (st.final) throw new FlowError('마지막 조언은 변환과 함께 처리돼요', 409);
-  const sc = content.scenario(s.pick.characterId);
-  const reply = replyFor(sc, st.n + 1, false);
-  s.advice.rounds.push({ n: st.n + 1, text, at: now(), reply });
-  addEvent(s, 'advice_submit', { round: st.n + 1, length: len(text) });
-  return reply;
-}
-
-// 변환 결과 기록(마지막 회차 또는 다시 쓰기). not_advice는 첫 번째에 한해 다시 쓰게 한다.
-export function applyTransform(s, roundText, result, content, expectRounds) {
-  requireStage(s, 'S4');
-  if (s.advice.rounds.length !== expectRounds) throw new FlowError('이미 처리된 조언이에요. 화면을 다시 불러올게요.', 409);
-  const st = adviceState(s);
-  const sc = content.scenario(s.pick.characterId);
-  const reply = replyFor(sc, st.n + 1, true);
-  s.advice.rounds.push({ n: st.n + 1, text: roundText, at: now(), retry: st.retry, reply });
-  const attempt = s.advice.attempts.length + 1;
-  const advice = combinedAdvice(s.advice.rounds.map((r) => r.text));
-  const rec = { n: attempt, text: advice, rounds: s.advice.rounds.length, at: now(), ...result };
-  s.advice.attempts.push(rec);
-  addEvent(s, 'advice_submit', { round: st.n + 1, attempt, length: len(roundText), retry: st.retry });
-  addEvent(s, 'transform_result', { attempt, outcome: result.outcome, safety_source: result.safetySource || null, tries: result.calls?.length || 0 });
-  if (result.outcome === 'not_advice' && attempt === 1) { addEvent(s, 'advice_retry_prompt', { attempt }); return reply; }
-  s.advice.outcome = result.outcome;
-  s.advice.final = attempt;
+  s.s4 = { thought: text('thought', d.thought, { single: true }), situation: text('situation', d.situation, { optional: true, single: true }), at: now() };
   moveTo(s, 'S5');
-  return reply;
-}
-
-export function doReflectPre(s, d) {
-  requireStage(s, 'S5');
-  const c = checker('S5');
-  s.reflectPre = {
-    situation: c.text('situation', d.situation),
-    emotion: c.text('emotion', d.emotion),
-    automatic_thought: c.text('automatic_thought', d.automatic_thought),
-    belief_pre: c.int('belief_pre', d.belief_pre, 0, 100),
-    view_pre: c.text('view_pre', d.view_pre),
-    at: now(),
-  };
-  submitted(s, 'S5', s.reflectPre);
-  moveTo(s, s.advice.outcome === 'ok' ? 'S6' : 'S7');
-}
-
-export function finalAttempt(s) {
-  return s.advice.final ? s.advice.attempts[s.advice.final - 1] : null;
 }
 
 export function doReturned(s, d) {
+  requireStage(s, 'S5');
+  const fidelity = oneOf('fidelity', d.fidelity, FIDELITY);
+  const shown = finalSubmission(s).self;
+  let after = text('edit', d.edit, { optional: true, single: true });
+  if (after === shown) after = null;
+  s.s5 = { shown, fidelity, edited: after != null, editBefore: after != null ? shown : null, editAfter: after, at: now() };
+  moveTo(s, 'S6');
+}
+
+export const sentenceFor = (s) => s.s5.editAfter ?? s.s5.shown;
+
+export function doDecision(s, d) {
   requireStage(s, 'S6');
-  const c = checker('S6');
-  const fidelity = c.oneOf('fidelity', d.fidelity, ['good', 'partial', 'different']);
-  const edited = c.text('edited_self', d.edited_self, { optional: true });
-  const shown = finalAttempt(s).result.self;
-  s.returned = { shown_self: shown, fidelity, edited_self: edited, final_self: edited ?? shown, at: now() };
-  submitted(s, 'S6', { edited_self: edited });
+  const decision = oneOf('decision', d.decision, DECISIONS);
+  const sentence = sentenceFor(s);
+  let final = null;
+  if (decision === 'as_is') final = sentence;
+  if (decision === 'edited') {
+    final = text('final', d.final, { single: true });
+    if (final === sentence) throw new FlowError('고친 부분이 없어요', 422, { field: 'final', reason: 'unchanged' });
+  }
+  s.s6 = { sentence, decision, final, at: now() };
   moveTo(s, 'S7');
 }
 
-export function doEvidence(s, d) {
+// S7 이유 선택지: 판단별 목록 + '다른 이유'. category는 화면에 보내지 않는다
+export function reasonsFor(study, decision) {
+  return [...(study.reasons[decision] || []), study.reasons.other];
+}
+
+export function doReason(s, d, content) {
   requireStage(s, 'S7');
-  const c = checker('S7');
-  s.evidence = { ...c.textOrNone('evidence_for', 'for_none', d), ...c.textOrNone('evidence_against', 'against_none', d), at: now() };
-  submitted(s, 'S7', { evidence_for: s.evidence.evidence_for, evidence_against: s.evidence.evidence_against });
-  moveTo(s, s.returned ? 'S8' : 'S9');
-}
-
-export function doJudge(s, d) {
-  requireStage(s, 'S8');
-  const c = checker('S8');
-  const verdict = c.oneOf('verdict', d.verdict, ['accept', 'modify', 'hold', 'reject']);
-  s.judge = {
-    ...c.textOrNone('common', 'common_none', d),
-    ...c.textOrNone('difference', 'difference_none', d),
-    verdict,
-    reason: c.text('reason', d.reason),
-    modified_text: verdict === 'modify' ? c.text('modified_text', d.modified_text) : null,
-    target_text: s.returned.final_self,
-    at: now(),
-  };
-  submitted(s, 'S8', { common: s.judge.common, difference: s.judge.difference, reason: s.judge.reason, modified_text: s.judge.modified_text });
-  moveTo(s, 'S9');
-}
-
-export function doReflectPost(s, d) {
-  requireStage(s, 'S9');
-  const c = checker('S9');
-  s.reflectPost = { view_post: c.text('view_post', d.view_post), belief_post: c.int('belief_post', d.belief_post, 0, 100), at: now() };
-  submitted(s, 'S9', { view_post: s.reflectPost.view_post });
-  moveTo(s, 'S10');
+  const list = reasonsFor(content.study, s.s6.decision);
+  const r = list.find((x) => x.id === d.reason);
+  if (!r) throw new FlowError('이유를 하나 골라 주세요', 422, { field: 'reason', reason: 'required' });
+  const line = r.line ? text('reason_text', d.text, { optional: !r.lineRequired, single: true }) : null;
+  s.s7 = { reasonId: r.id, category: r.category, text: line, at: now() };
+  moveTo(s, 'S8');
 }
 
 export function doSurvey(s, d) {
-  requireStage(s, 'S10');
-  const c = checker('S10');
-  const shown = shownItemsFor(s.advice.outcome);
-  const out = { shown_items: shown };
-  for (const q of LIKERT) {
-    if (!shown.includes(q) && d[q] != null) throw new FlowError('보이지 않은 문항에는 답할 수 없어요', 422, { field: q, reason: 'not_shown' });
-    out[q] = shown.includes(q) ? c.int(q, d[q], 1, 5) : null;
-  }
-  out.at = now();
-  s.survey = out;
-  submitted(s, 'S10');
-  s.endType = 'completed';
-  moveTo(s, 'S11');
+  requireStage(s, 'S8');
+  s.s8 = { q10: int('q10', d.q10, 1, 5), q11: int('q11', d.q11, 1, 5), at: now() };
+  moveTo(s, 'S9');
 }
 
-export function doWithdraw(s) {
-  if (s.stage === 'S11') return;
-  s.withdrawnAt = s.stage;
-  addEvent(s, 'withdraw_request', { stage: s.stage });
-  s.endType = 'withdrawn';
-  moveTo(s, 'S11');
+export function doFinish(s, d) {
+  requireStage(s, 'S9');
+  const withdraw = oneOf('withdraw', d.withdraw, [true, false]);
+  s.s9 = { withdraw, at: now() };
+  s.endType ||= 'completed';
+  moveTo(s, 'END');
 }
 
-// 화면에서 보내는 이벤트: 허용 유형·작은 payload만, event_id로 중복 제거. 단계나 결과를 바꾸지 않는다.
-const CLIENT_EVENTS = {
-  fidelity_select: ['value'], self_edit: ['length', 'changed'], evidence_none_check: ['field', 'checked'],
-  verdict_select: ['value'], verdict_change: ['from', 'to'], belief_set: ['field', 'value'],
-  visibility: ['state'], resume: [],
-};
-export function doEvent(s, d) {
-  const keys = CLIENT_EVENTS[d.type];
-  if (!keys || s.events.length > 2000) return;
-  const eventId = typeof d.event_id === 'string' && /^[\w-]{8,64}$/.test(d.event_id) ? d.event_id : null;
-  if (eventId && s.events.some((e) => e.id === eventId)) return;
-  const payload = {};
-  for (const k of keys) {
-    const v = d.payload?.[k];
-    if (typeof v === 'number' || typeof v === 'boolean') payload[k] = v;
-    else if (typeof v === 'string') payload[k] = v.slice(0, 20);
-  }
-  addEvent(s, d.type, payload, { eventId, clientTs: typeof d.client_ts === 'string' ? d.client_ts.slice(0, 40) : null, source: 'client' });
+// 그만하기: 마무리(디브리핑·철회 선택)로 간다
+export function doStop(s) {
+  if (s.stage === 'S9' || s.stage === 'END') return;
+  s.stoppedAt = s.stage;
+  s.endType = 'stopped';
+  if (!s.path) { s.path = 'fail'; s.failReason = 'stopped'; s.failStep = s.stage; }
+  moveTo(s, 'S9');
 }
 
 // ---- 참가자 화면에 줄 정보 ----
-const charInfo = (sc) => (sc ? { id: sc.id, name: sc.name, title: sc.title, summary: sc.summary, faces: !!sc.faces } : null);
-
 export function publicView(s, content) {
-  const sc = content.scenario(s.pick.characterId);
-  const v = { id: s.id, participantId: s.participantId, stage: s.stage, endType: s.endType, character: charInfo(sc), llmMode: s.llmMode };
-  // 대화 기록: 턴마다 캐릭터의 공통 대사(lead) → 참가자가 고른 말 → 캐릭터 대답, 각 대사의 표정 포함
-  const history = () => s.dialogue.map((x) => {
-    const t = sc.dialogue.turns[x.turn - 1];
-    const c = t.choices.find((k) => k.id === x.choiceId);
-    return { lead: t.lead || null, leadExpression: t.lead_expression || null, question: x.question, reply: x.reply, expression: c?.expression || null };
-  });
-  const intro = () => { v.intro = sc.dialogue.intro; v.introExpression = sc.dialogue.intro_expression || null; };
+  const c = content.character;
+  const v = { id: s.id, pid: s.pid, stage: s.stage, endType: s.endType, llmMode: s.llmMode, character: { name: c.name, title: c.title, faces: c.faces } };
+  const chat = () => {
+    const out = [{ who: 'char', ...c.opening }];
+    if (s.s2) {
+      const ch = c.choices.find((x) => x.id === s.s2.choiceId);
+      out.push({ who: 'me', text: ch.text }, { who: 'char', text: ch.reply, expression: ch.expression }, { who: 'char', ...c.question });
+    }
+    for (const sub of s.s3.submissions) {
+      out.push({ who: 'me', text: sub.text });
+      if (sub.path === 'not_advice' && !sub.reprompt) out.push({ who: 'char', ...c.reprompt });
+    }
+    return out;
+  };
   switch (s.stage) {
     case 'S2':
-      v.characters = content.scenarios.map((x) => ({ ...charInfo(x), checked: s.pick.checks.some((k) => k.characterId === x.id) }));
+      v.chat = chat();
+      v.choices = c.choices.map((x) => ({ id: x.id, text: x.text })); // 태도 유형은 보내지 않는다
       break;
-    case 'S3': {
-      const turn = s.dialogue.length + 1;
-      const t = sc.dialogue.turns[turn - 1];
-      intro();
-      v.history = history();
-      v.turn = turn;
-      v.turns = sc.dialogue.turns.length;
-      v.lead = t.lead || null;
-      v.leadExpression = t.lead_expression || null;
-      v.choices = t.choices.map((x) => ({ id: x.id, text: x.text })); // 태도 유형은 보내지 않는다
+    case 'S3':
+      v.chat = chat();
+      v.reprompt = s.s3.repromptUsed;
       break;
-    }
-    case 'S4': {
-      const st = adviceState(s);
-      intro();
-      v.history = history();
-      v.closing = sc.dialogue.closing;
-      v.closingExpression = sc.dialogue.closing_expression || null;
-      v.rounds = s.advice.rounds.map((r) => ({ advice: r.text, reply: r.reply?.text || null, expression: r.reply?.expression || null }));
-      v.round = Math.min(st.n + 1, st.R);
-      v.roundsTotal = st.R;
-      v.retry = st.retry;
+    case 'S5': {
+      const f = finalSubmission(s);
+      v.advice = f.text;
+      v.self = f.self;
       break;
     }
-    case 'S6': {
-      const fa = finalAttempt(s);
-      v.advice = fa.text;
-      v.self = fa.result.self;
+    case 'S6':
+      v.thought = s.s4.thought;
+      v.sentence = sentenceFor(s);
       break;
-    }
     case 'S7':
-      v.automatic_thought = s.reflectPre.automatic_thought;
+      v.decision = s.s6.decision;
+      v.reasons = reasonsFor(content.study, s.s6.decision).map((r) => ({ id: r.id, text: r.text, line: r.line || null, lineRequired: !!r.lineRequired }));
       break;
-    case 'S8': {
-      v.target = s.returned.final_self;
-      v.automatic_thought = s.reflectPre.automatic_thought;
-      const { evidence_for, for_none, evidence_against, against_none } = s.evidence;
-      v.evidence = { evidence_for, for_none, evidence_against, against_none };
-      break;
-    }
     case 'S9':
-      v.situation = s.reflectPre.situation;
-      v.automatic_thought = s.reflectPre.automatic_thought;
-      break;
-    case 'S10':
-      v.shown_items = shownItemsFor(s.advice.outcome);
+      v.debrief = s.s5 ? 'ok' : 'fail';
+      v.failReason = s.s5 ? null : s.failReason || 'stopped';
       break;
     default:
   }

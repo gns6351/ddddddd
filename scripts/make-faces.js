@@ -1,16 +1,12 @@
-// 캐릭터 표정 이미지(초안) 만들기: content/scenarios/<id>/faces/<표정>.svg
+// 캐릭터 표정 이미지(초안) 만들기: content/character/faces/<표정>.svg
 //   node scripts/make-faces.js
 // 단순한 도형으로 직접 그린 자체 제작 그림이다(기존 캐릭터를 본뜨지 않음). 같은 이름의 .svg 파일로 바꿔 넣으면 그대로 쓰인다.
-// 표정: neutral(기본) anxious(불안) sad(슬픔) hesitant(망설임) softened(조금 누그러짐) — 활짝 웃는 표정은 만들지 않는다.
+// 표정: neutral(기본) sad(속상함) 두 가지만 쓴다(명세 v4.2). 웃는 표정은 결론을 유도할 수 있어 만들지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../server/config.js';
 
-const PEOPLE = {
-  'A-job': { skin: '#f3d3b8', hair: '#3b2a20', shirt: '#6f8fbf', style: 'bob' },
-  'B-refusal': { skin: '#e9c39f', hair: '#26221f', shirt: '#7ea67a', style: 'short', glasses: true },
-  'C-perfection': { skin: '#f5dac6', hair: '#5b3b2b', shirt: '#c78a9b', style: 'long' },
-};
+const PERSON = { skin: '#f3d3b8', hair: '#3b2a20', shirt: '#6f8fbf', style: 'bob' };
 
 const HAIR = {
   bob: { back: 'M24 60 Q22 22 60 20 Q98 22 96 60 L96 82 Q90 86 84 80 L84 56 L36 56 L36 80 Q30 86 24 82 Z', front: 'M28 52 Q30 24 60 24 Q90 24 92 52 Q78 40 62 42 Q46 40 28 52 Z' },
@@ -20,10 +16,7 @@ const HAIR = {
 
 const FACES = {
   neutral: { brows: ['M41 47 L53 47', 'M67 47 L79 47'], eyes: 'dots', mouth: 'M52 75 Q60 77 68 75' },
-  anxious: { brows: ['M41 48 L53 44', 'M67 44 L79 48'], eyes: 'wide', mouth: 'M51 76 q4.5 -3 9 0 q4.5 3 9 0', sweat: true },
   sad: { brows: ['M41 49 L53 43', 'M67 43 L79 49'], eyes: 'low', mouth: 'M52 78 Q60 71 68 78' },
-  hesitant: { brows: ['M41 47 L53 47', 'M67 44 Q73 42 79 45'], eyes: 'aside', mouth: 'M53 76 L66 74' },
-  softened: { brows: ['M41 47 Q47 46 53 47', 'M67 47 Q73 46 79 47'], eyes: 'dots', mouth: 'M53 75 Q60 77.5 67 75' },
 };
 
 function eyes(kind) {
@@ -56,10 +49,8 @@ function svg(p, f, label) {
 `;
 }
 
-const LABEL = { neutral: '기본 표정', anxious: '불안한 표정', sad: '슬픈 표정', hesitant: '망설이는 표정', softened: '조금 누그러진 표정' };
-for (const [id, p] of Object.entries(PEOPLE)) {
-  const dir = path.join(ROOT, 'content', 'scenarios', id, 'faces');
-  fs.mkdirSync(dir, { recursive: true });
-  for (const [name, f] of Object.entries(FACES)) fs.writeFileSync(path.join(dir, `${name}.svg`), svg(p, f, LABEL[name]));
-}
-console.log('표정 이미지를 만들었어요: content/scenarios/*/faces/*.svg');
+const LABEL = { neutral: '기본 표정', sad: '속상한 표정' };
+const dir = path.join(ROOT, 'content', 'character', 'faces');
+fs.mkdirSync(dir, { recursive: true });
+for (const [name, f] of Object.entries(FACES)) fs.writeFileSync(path.join(dir, `${name}.svg`), svg(PERSON, f, LABEL[name]));
+console.log('표정 이미지를 만들었어요: content/character/faces/*.svg');

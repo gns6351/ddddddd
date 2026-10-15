@@ -1,31 +1,15 @@
 {
-  "version": "test-rules-1",
-  "_note": "[TEST] 가상 테스트 토큰. 실제 위험 패턴 아님",
-  "urgent": [
-    {
-      "id": "tu1",
-      "pattern": "TEST_URGENT"
-    }
+  "version": "v4.2-draft",
+  "_note": "S3 조언을 AI로 보내기 전에 거르는 규칙(정규식, JavaScript u 플래그). 원문(NFKC)과 공백 뺀 문장 둘 다에 적용. 걸리면 AI를 호출하지 않고 risk / blame 실패 경로로 간다. 오탐이면 정상 참가자가 실패 경로로 가므로 좁게 쓰고 세부 판정은 AI에 맡긴다. S4~S7 입력은 검사하지 않는다(명세: 세션 후 연구자가 S4 기록 확인).",
+  "risk": [
+    { "id": "r01-self-harm-advice", "pattern": "죽어\\s*버려|죽는\\s*게\\s*나아|자해\\s*해|사라져\\s*버려|뛰어내려" },
+    { "id": "r02-dangerous-behavior", "pattern": "음주\\s*운전|술\\s*(잔뜩\\s*)?마시고\\s*운전|약을?\\s*(왕창|잔뜩)\\s*(먹|삼켜)|굶어\\s*버려" },
+    { "id": "r03-violence-advice", "pattern": "때려\\s*(버려|줘)|패\\s*버려|해코지\\s*해" },
+    { "id": "r04-suicidal", "pattern": "죽고\\s*싶|자살|목숨을?\\s*끊|극단적(인)?\\s*선택" }
   ],
-  "unsafe": [
-    {
-      "id": "tx1",
-      "pattern": "TEST_UNSAFE"
-    }
-  ],
-  "blaming": [
-    {
-      "id": "tb1",
-      "pattern": "TEST_BLAMING"
-    }
-  ],
-  "fallback": {
-    "unsafe": [
-      {
-        "id": "tfu1",
-        "pattern": "TEST_FB_UNSAFE"
-      }
-    ],
-    "blaming": []
-  }
+  "blame": [
+    { "id": "b01-your-fault", "pattern": "(네|니|너의?)\\s*탓(?!\\s*(이|은|만은?)?\\s*아니)" },
+    { "id": "b02-you-did-wrong", "pattern": "(네가|니가|너가)\\s*(게을러서|노력을?\\s*안\\s*해서|노력이\\s*부족해서|못나서|머리가\\s*나빠서)" },
+    { "id": "b03-slur", "pattern": "병신|등신|한심한\\s*(놈|애|녀석)|멍청하" }
+  ]
 }

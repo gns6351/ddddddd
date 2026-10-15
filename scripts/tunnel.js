@@ -17,7 +17,7 @@ try {
 }
 
 console.log(`인터넷 링크를 만드는 중이에요 (서버 포트 ${port})…`);
-const child = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn('cloudflared', ['tunnel', '--url', `http://127.0.0.1:${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
 let shown = false;
 
 function scan(chunk) {

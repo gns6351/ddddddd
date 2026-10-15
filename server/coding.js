@@ -1,171 +1,98 @@
-// RQ1 블라인드 코딩 (명세 §7 기준 A·B·C). 시트마다 data/coding/<sheet>.json 하나.
-//   - 문장은 무작위 ID로 섞여 나오고 참가자·시점은 숨긴다(reexam의 S5/S9도 섞임).
-//   - 코더1·코더2가 따로 점수를 매기고, 다르게 본 것은 '합의'에서 최종 점수를 정한다.
-//   - 결과 점수 = 합의 → 두 코더 일치 → 한 명만 코딩했으면 그 점수 (그 외는 미확정)
+// 코더 판정 저장(코더 1 · 코더 2 · 합의). 시트마다 data/coding/<sheet>.json
+//   validation : 실험 전 샘플 변환문의 오류 유형 (배열, []=오류 없음)
+//   transform  : 참가자 조언 변환문의 오류 유형 (배열)
+//   reason     : S7 이유 범주 확정 (문자열)
+//   edit       : 고쳐 쓴 문장의 변화 유형 (배열, 새 유형 자유 입력 가능)
+// 최종값 = 합의 > 두 코더 일치 > 한 코더만 판정(single) > 없음. 두 코더가 다르면 합의 전까지 비어 있다(conflict).
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { finalAttempt } from './flow.js';
-import { agreement, cohenKappa, weightedKappa } from './stats.js';
+import { cohenKappa, agreement } from './stats.js';
 
+export const SHEETS = { validation: 'multi', transform: 'multi', reason: 'single', edit: 'multi' };
 export const CODERS = ['coder1', 'coder2', 'final'];
-export const analyzable = (s) => s.endType === 'completed' && !s.excluded?.excluded;
-export const isOk = (s) => s.advice.outcome === 'ok' && !!s.returned;
 
-// 시점별 원칙 기준(명세 §7): S5는 final_advice만, S8·S9는 그때까지 참가자가 실제로 본 문장
-export function principlesAt(s, point) {
-  const out = { final_advice: finalAttempt(s)?.text ?? '' };
-  if (point === 'pre') return out;
-  if (s.returned?.shown_self) out.shown_self = s.returned.shown_self;
-  if (s.returned?.edited_self) out.edited_self = s.returned.edited_self;
-  if (s.judge?.modified_text) out.modified_text = s.judge.modified_text;
-  return out;
+const norm = (sheet, v) => (v == null ? null : SHEETS[sheet] === 'multi' ? [...new Set(v)].sort() : v);
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+export function resolve(rec) {
+  if (!rec) return { value: null, status: 'todo' };
+  if (rec.final != null) return { value: rec.final, status: 'final' };
+  const a = rec.coder1;
+  const b = rec.coder2;
+  if (a != null && b != null) return same(a, b) ? { value: a, status: 'agree' } : { value: null, status: 'conflict' };
+  if (a != null || b != null) return { value: a ?? b, status: 'single' };
+  return { value: null, status: 'todo' };
 }
-
-export const SHEETS = {
-  reexam: {
-    label: 'A. 자동적 사고 재검토 수준 (S5·S9 해석)', levels: [0, 1, 2, 3],
-    eligible: analyzable,
-    items: (s) => [['pre', { text: s.reflectPre.view_pre }], ['post', { text: s.reflectPost.view_post }]],
-  },
-  selfapp: {
-    label: 'B. 조언 자기적용 수준 (S5·S9 해석)', levels: [0, 1, 2, 3],
-    eligible: (s) => analyzable(s) && isOk(s),
-    items: (s) => [['pre', { principles: principlesAt(s, 'pre'), text: s.reflectPre.view_pre }], ['post', { principles: principlesAt(s, 'post'), text: s.reflectPost.view_post }]],
-  },
-  s8: {
-    label: 'B. 조언 자기적용 수준 (S8 응답)', levels: [0, 1, 2, 3],
-    eligible: (s) => analyzable(s) && isOk(s) && !!s.judge,
-    items: (s) => [['s8', {
-      principles: principlesAt(s, 's8'),
-      common: s.judge.common_none ? '(없음/판단 어려움)' : s.judge.common,
-      difference: s.judge.difference_none ? '(없음/판단 어려움)' : s.judge.difference,
-      verdict: s.judge.verdict, reason: s.judge.reason, modified_text: s.judge.modified_text || '',
-    }]],
-  },
-  advice: {
-    label: 'C. 조언 질 (final_advice)', levels: [0, 1, 2],
-    eligible: (s) => analyzable(s) && !!finalAttempt(s),
-    items: (s, content) => {
-      const sc = content.scenario(s.pick.characterId);
-      const facts = [...new Set(s.dialogue.flatMap((d) => d.factIds || []))].map((i) => sc?.facts?.[i]).filter(Boolean);
-      return [['advice', { situation: sc ? `${sc.summary} "${sc.automatic_thought}"` : '', facts, advice: finalAttempt(s).text }]];
-    },
-  },
-};
 
 export function createCoding(dataDir) {
-  const queues = new Map();
-  const fileOf = (sheet) => path.join(dataDir, 'coding', `${sheet}.json`);
-  const check = (sheet) => { if (!SHEETS[sheet]) throw Object.assign(new Error('없는 코딩 시트예요'), { status: 404 }); };
+  const dir = path.join(dataDir, 'coding');
+  const queue = new Map();
 
   async function read(sheet) {
-    try { return JSON.parse(await fs.readFile(fileOf(sheet), 'utf8')); } catch (err) {
-      if (err.code === 'ENOENT') return { items: {}, codes: { coder1: {}, coder2: {}, final: {} } };
-      throw err;
-    }
+    try { return JSON.parse(await fs.readFile(path.join(dir, `${sheet}.json`), 'utf8')); } catch { return { items: {} }; }
   }
-  async function write(sheet, db) {
-    await fs.mkdir(path.dirname(fileOf(sheet)), { recursive: true });
-    const tmp = `${fileOf(sheet)}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(db, null, 2), 'utf8');
-    await fs.rename(tmp, fileOf(sheet));
+  async function write(sheet, data) {
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${sheet}.json`);
+    await fs.writeFile(`${file}.tmp`, JSON.stringify(data, null, 2));
+    await fs.rename(`${file}.tmp`, file);
   }
-  const withDb = (sheet, fn) => {
-    const next = (queues.get(sheet) || Promise.resolve()).catch(() => {}).then(async () => {
-      const db = await read(sheet);
-      const out = await fn(db);
-      if (out?.changed !== false) await write(sheet, db);
-      return out?.result;
-    });
-    queues.set(sheet, next);
+  function serial(sheet, fn) {
+    const next = (queue.get(sheet) || Promise.resolve()).catch(() => {}).then(fn);
+    queue.set(sheet, next);
     return next;
-  };
-
-  function sync(sheet, db, sessions, content) {
-    let changed = false;
-    const have = new Set(Object.values(db.items).map((it) => `${it.sessionId}:${it.item}`));
-    for (const s of sessions.filter(SHEETS[sheet].eligible)) {
-      for (const [item, show] of SHEETS[sheet].items(s, content)) {
-        if (have.has(`${s.id}:${item}`)) continue;
-        let id;
-        do { id = `${sheet[0].toUpperCase()}${crypto.randomBytes(3).toString('hex')}`; } while (db.items[id]);
-        db.items[id] = { sessionId: s.id, item, show, createdAt: new Date().toISOString() };
-        changed = true;
-      }
-    }
-    return changed;
   }
-  const liveIds = (sheet, db, sessions) => {
-    const live = new Set(sessions.filter(SHEETS[sheet].eligible).map((s) => s.id));
-    return Object.keys(db.items).filter((id) => live.has(db.items[id].sessionId)).sort();
-  };
 
-  return {
-    list: (sheet, sessions, content, coder) => { check(sheet); return withDb(sheet, (db) => {
-      const changed = sync(sheet, db, sessions, content);
-      const ids = liveIds(sheet, db, sessions);
-      let items = ids.map((id) => ({ blindId: id, show: db.items[id].show, score: db.codes[coder]?.[id]?.score ?? null }));
-      if (coder === 'final') {
-        items = ids.filter((id) => db.codes.coder1[id] && db.codes.coder2[id] && db.codes.coder1[id].score !== db.codes.coder2[id].score)
-          .map((id) => ({ blindId: id, show: db.items[id].show, score: db.codes.final[id]?.score ?? null, coder1: db.codes.coder1[id].score, coder2: db.codes.coder2[id].score }));
+  // 대상 목록(keys)을 반영하고 기록을 돌려준다. 새 대상에는 무작위 blindId를 붙인다
+  function sync(sheet, keys) {
+    return serial(sheet, async () => {
+      const data = await read(sheet);
+      let changed = false;
+      for (const k of keys) {
+        if (!data.items[k]) { data.items[k] = { blindId: crypto.randomBytes(4).toString('hex'), coder1: null, coder2: null, final: null }; changed = true; }
       }
-      return { changed, result: { sheet, label: SHEETS[sheet].label, levels: SHEETS[sheet].levels, items, total: ids.length, done: items.filter((x) => x.score !== null).length } };
-    }); },
+      if (changed) await write(sheet, data);
+      return data;
+    });
+  }
 
-    save: (sheet, coder, blindId, score) => { check(sheet); return withDb(sheet, (db) => {
-      if (!CODERS.includes(coder)) throw Object.assign(new Error('코더를 골라 주세요'), { status: 422 });
-      if (!db.items[blindId]) throw Object.assign(new Error('없는 항목이에요'), { status: 404 });
-      if (score === null) { delete db.codes[coder][blindId]; return { result: null }; }
-      if (!SHEETS[sheet].levels.includes(score)) throw Object.assign(new Error('점수를 골라 주세요'), { status: 422 });
-      db.codes[coder][blindId] = { score, at: new Date().toISOString() };
-      return { result: db.codes[coder][blindId] };
-    }); },
+  function save(sheet, coder, blindId, value) {
+    if (!SHEETS[sheet]) throw Object.assign(new Error('없는 시트예요'), { status: 404 });
+    if (!CODERS.includes(coder)) throw Object.assign(new Error('코더를 골라 주세요'), { status: 422 });
+    const kind = SHEETS[sheet];
+    if (value != null && kind === 'multi' && !(Array.isArray(value) && value.every((x) => typeof x === 'string' && x.length <= 40) && value.length <= 12)) throw Object.assign(new Error('판정 값이 잘못됐어요'), { status: 422 });
+    if (value != null && kind === 'single' && !(typeof value === 'string' && value.length <= 40)) throw Object.assign(new Error('판정 값이 잘못됐어요'), { status: 422 });
+    return serial(sheet, async () => {
+      const data = await read(sheet);
+      const entry = Object.entries(data.items).find(([, r]) => r.blindId === blindId);
+      if (!entry) throw Object.assign(new Error('없는 항목이에요'), { status: 404 });
+      entry[1][coder] = norm(sheet, value);
+      entry[1].updatedAt = new Date().toISOString();
+      await write(sheet, data);
+      return { ...entry[1], resolved: resolve(entry[1]) };
+    });
+  }
 
-    // 세션별 확정 점수 { sessionId: { item: score } } + 신뢰도
-    results: (sheet, sessions) => withDb(sheet, (db) => {
-      const ids = liveIds(sheet, db, sessions);
-      const scores = {};
-      for (const id of ids) {
-        const v = resolved(db, id);
-        if (v === null) continue;
-        (scores[db.items[id].sessionId] ||= {})[db.items[id].item] = v;
-      }
-      const both = ids.filter((id) => db.codes.coder1[id] && db.codes.coder2[id]);
-      const a = both.map((id) => db.codes.coder1[id].score);
-      const b = both.map((id) => db.codes.coder2[id].score);
-      const disagree = both.filter((id) => db.codes.coder1[id].score !== db.codes.coder2[id].score);
-      return {
-        changed: false,
-        result: {
-          sheet, label: SHEETS[sheet].label, levels: SHEETS[sheet].levels, items: ids.length,
-          progress: Object.fromEntries(CODERS.map((c) => [c, ids.filter((id) => db.codes[c][id]).length])),
-          unresolved: ids.filter((id) => resolved(db, id) === null).length,
-          reliability: { n: both.length, agreement: agreement(a, b), weightedKappa: weightedKappa(a, b, SHEETS[sheet].levels), kappa: cohenKappa(a, b), disagreements: disagree.length, resolved: disagree.filter((id) => db.codes.final[id]).length },
-          scores,
-        },
-      };
-    }),
-
-    rows: (sheet, sessions) => withDb(sheet, (db) => {
-      const byId = new Map(sessions.map((s) => [s.id, s]));
-      const rows = liveIds(sheet, db, sessions).map((id) => {
-        const it = db.items[id];
-        return {
-          sheet, blind_id: id, session_id: it.sessionId, participant_id: byId.get(it.sessionId)?.participantId ?? '', item: it.item,
-          coder1: db.codes.coder1[id]?.score ?? '', coder2: db.codes.coder2[id]?.score ?? '', final: db.codes.final[id]?.score ?? '', result: resolved(db, id) ?? '',
-        };
-      });
-      return { changed: false, result: rows };
-    }),
-  };
+  return { sync, save, read };
 }
 
-function resolved(db, id) {
-  const f = db.codes.final[id];
-  if (f) return f.score;
-  const a = db.codes.coder1[id];
-  const b = db.codes.coder2[id];
-  if (a && b) return a.score === b.score ? a.score : null;
-  return (a || b)?.score ?? null;
+// 두 코더 일치도. multi: 유형별 있음/없음(이진) 일치율·κ, single: 범주 일치율·κ. 불일치 항목 목록 포함
+export function agreementReport(sheet, data, keys, types = []) {
+  const both = keys.map((k) => [k, data.items[k]]).filter(([, r]) => r && r.coder1 != null && r.coder2 != null);
+  const disagreements = both.filter(([, r]) => !same(r.coder1, r.coder2)).map(([k, r]) => ({ key: k, blindId: r.blindId, coder1: r.coder1, coder2: r.coder2, final: r.final }));
+  const out = { n: both.length, exact: both.length ? (both.length - disagreements.length) / both.length : NaN, disagreements };
+  if (SHEETS[sheet] === 'multi') {
+    out.types = types.map((t) => {
+      const a = both.map(([, r]) => r.coder1.includes(t));
+      const b = both.map(([, r]) => r.coder2.includes(t));
+      return { type: t, n: both.length, agreement: agreement(a, b), kappa: cohenKappa(a, b), coder1: a.filter(Boolean).length, coder2: b.filter(Boolean).length };
+    });
+  } else {
+    const a = both.map(([, r]) => r.coder1);
+    const b = both.map(([, r]) => r.coder2);
+    out.agreement = agreement(a, b);
+    out.kappa = cohenKappa(a, b);
+  }
+  return out;
 }
