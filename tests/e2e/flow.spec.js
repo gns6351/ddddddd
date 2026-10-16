@@ -73,7 +73,7 @@ test('조언 아님 → 재질문 → 다시 조언 아님이면 실패 경로 �
   await expect(page.getByText('나에게 하는 말로 바꾸기 어려웠어요')).toBeVisible();
 });
 
-test('연구자 화면: 샘플 만들기 → 실행 → 오류 주입 → 다시 실행 → 결과 → 코딩', async ({ page }) => {
+test('연구자 화면: 샘플 만들기 → 본 실행 → 오류 주입 → 주입 문장만 점검 → 결과 → 코딩', async ({ page }) => {
   await page.goto('/admin');
   await expect(page.getByRole('heading', { name: '1. 샘플 조언 세트' })).toBeVisible();
   await page.getByRole('button', { name: /예시 불러오기/ }).click();
@@ -88,6 +88,7 @@ test('연구자 화면: 샘플 만들기 → 실행 → 오류 주입 → 다시
   await page.getByRole('button', { name: 'AI로 오류 문장 만들기' }).click();
   await expect(page.locator('#lab')).toContainText('오류 주입 세트 (변환 점검 시험용)');
   await expect(page.locator('#job-last')).toContainText('개 추가', { timeout: 20_000 });
+  await page.selectOption('#run-scope', 'injected');
   await page.getByRole('button', { name: '실험 실행' }).click();
   await expect(page.locator('#job-last')).toContainText('실행 완료', { timeout: 30_000 });
 
@@ -103,6 +104,6 @@ test('연구자 화면: 샘플 만들기 → 실행 → 오류 주입 → 다시
   await page.selectOption('#c-sheet', 'validation');
   await expect(page.locator('#c-run-wrap')).toBeVisible();
   const v = page.locator('#c-items .code-card').first();
-  await v.locator('label').filter({ hasText: '강도 강화' }).click();
+  await v.locator('label').filter({ hasText: '새 당위' }).click();
   await expect(v.locator('.saved')).toHaveText('저장됨');
 });

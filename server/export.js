@@ -31,7 +31,7 @@ export function flattenSession(s) {
     transformed_first: val(fin?.transforms?.[0]?.self),
     check: val(firstCheck?.result),
     check_final: val(fin?.checks?.at(-1)?.result),
-    check_detail: fin?.checks?.map((c) => `${c.attempt}:${c.result}${c.format?.errors?.length ? `[${c.format.errors.join('|')}]` : ''}${c.meaning?.reversal ? '[reversal]' : ''}${c.meaning?.addition ? '[addition]' : ''}`).join(';') || '',
+    check_detail: fin?.checks?.map((c) => `${c.attempt}:${c.result}${c.format?.errors?.length ? `[${c.format.errors.join('|')}]` : ''}${c.meaning?.reversal ? '[reversal]' : ''}${c.meaning?.addition ? '[addition]' : ''}${c.meaning?.forcing ? '[forcing]' : ''}`).join(';') || '',
     retransformed: val(fin?.retransformed),
     s4_thought: val(s.s4?.thought),
     s4_situation: val(s.s4?.situation),

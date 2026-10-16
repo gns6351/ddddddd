@@ -2,7 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot, toAdvice, runOk } from './helpers.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import { formatCheck } from '../server/pipeline.js';
+import { createSafety } from '../server/safety.js';
+import { judgeCheck } from '../server/llm.js';
+import { wilson } from '../server/stats.js';
+import { FIXTURE } from './helpers.js';
 
 // 실제 호출 모드에서 AI에 무엇이 가는지 보는 가짜 Gemini 클라이언트
 function fakeGemini(handler) {
@@ -10,7 +16,7 @@ function fakeGemini(handler) {
   return { calls, models: { async generateContent(req) { calls.push(req); return { text: handler(req, calls.length), modelVersion: 'fake' }; } } };
 }
 const okTransform = JSON.stringify({ verdict: 'ok', self: '[TEST] 나는 하나씩 해 볼 수 있다' });
-const passCheck = JSON.stringify({ reversal: false, addition: false, note: '' });
+const passCheck = JSON.stringify({ reversal: false, addition: false, forcing: false, note: '' });
 const isCheck = (req) => /변환 점검 모듈/.test(req.contents);
 
 test('ok 경로: S1→S2→S3→S4→S5→S6→S7→S8→S9→END, 기록 필드', async () => {
@@ -216,4 +222,47 @@ test('형식 점검 규칙: 2인칭 남음·빈 출력·길이(짧은 조언 예
   assert.deepEqual(formatCheck('쉬어', '', rules).errors, ['empty']);
   assert.deepEqual(formatCheck('쉬어', '비슷한 상황에서 나는 쉬어도 된다', rules).errors, [], '짧은 조언은 +20자까지');
   assert.deepEqual(formatCheck('열두 글자짜리 조언이에요', 'x'.repeat(30), rules).errors, ['too_long']);
+});
+
+test('2인칭 소유격: "네 페이스"·"니 생각"은 잡고 "네 번"·"네 가지"·"네 시간"은 잡지 않음', () => {
+  const r = { maxLengthRatio: 5 };
+  for (const t of ['나는 네 페이스대로 해도 된다', '니 생각대로 해도 된다']) assert.deepEqual(formatCheck(t, t, r).errors, ['second_person'], t);
+  for (const t of ['나는 시험을 네 번 봤다', '네 가지 방법이 있다', '네 시간 공부했다', '네 번째 시험', '나는 내 페이스대로']) assert.deepEqual(formatCheck(t, t, r).errors, [], t);
+});
+
+test('안전 규칙 오탐: 어머니 탓·네 탓이 아니야·상담전화·멍청하다고 생각하지 마는 통과, 비난·위험 권유는 걸림', () => {
+  const s = createSafety(JSON.parse(fs.readFileSync(path.join(FIXTURE, 'safety', 'rules.json'), 'utf8')));
+  const none = { risk: [], blame: [] };
+  for (const t of ['어머니 탓도 조금은 있어', '네 탓이 아니야', '네 탓이라고 생각하지 마', '자살예방상담전화 109에 전화해 봐', '멍청하다고 생각하지 마', '넌 멍청하지 않아', '죽고 싶을 만큼 힘들면 쉬어'])
+    assert.deepEqual(s.advice(t), none, t);
+  assert.deepEqual(s.advice('그건 네 탓이야').blame, ['b01-your-fault']);
+  assert.deepEqual(s.advice('넌 멍청해서 그래').blame, ['b03-slur']);
+  assert.deepEqual(s.advice('그냥 목숨을 끊어').risk, ['r04-suicide-advice']);
+});
+
+test('점검 forcing(새 당위·선택 삭제·결심 생성): 의미 실패 → 다시 변환, forcing은 boolean이어야 함', async () => {
+  let n = 0;
+  const g = fakeGemini((req) => (isCheck(req) ? JSON.stringify({ reversal: false, addition: false, forcing: (n += 1) === 1, note: n === 1 ? '[TEST] 제안을 의무로' : '' }) : okTransform));
+  const t = await boot({ llmModeEnv: 'live', apiKey: 'k' }, { geminiClient: g });
+  try {
+    const { id } = await toAdvice(t);
+    const r = await t.post(`/api/sessions/${id}/advice`, { advice: '[TEST] 부담되면 해 봐도 돼' });
+    assert.equal(r.body.stage, 'S4');
+    const sub = (await t.get(`/api/admin/sessions/${id}`)).body.s3.submissions[0];
+    assert.deepEqual(sub.checks.map((c) => c.result), ['meaning_fail', 'pass']);
+    assert.equal(sub.checks[0].meaning.forcing, true);
+    assert.equal(sub.retransformed, true);
+    assert.match(g.calls[1].contents, /forcing/, '점검 프롬프트 v2');
+  } finally { await t.close(); }
+  assert.equal(judgeCheck(JSON.stringify({ reversal: false, addition: false, forcing: 'yes', note: '' })).valid, false);
+  assert.equal(judgeCheck(JSON.stringify({ reversal: false, addition: false, note: '' })).forcing, false, 'v1 응답(forcing 없음)은 false');
+});
+
+test('Wilson 95% 구간', () => {
+  const r = (x) => x.map((v) => Number(v.toFixed(4)));
+  assert.deepEqual(r(wilson(8, 10)), [0.4902, 0.9433]);
+  assert.deepEqual(r(wilson(0, 10)), [0, 0.2775]);
+  assert.deepEqual(r(wilson(10, 10)), [0.7225, 1]);
+  assert.deepEqual(r(wilson(45, 50)), [0.7864, 0.9565]);
+  assert.ok(wilson(0, 0).every(Number.isNaN));
 });

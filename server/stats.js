@@ -238,3 +238,13 @@ export function weightedKappa(a, b, levels) {
   }
   return den === 0 ? NaN : 1 - num / den;
 }
+
+// 비율의 95% Wilson 점수 구간 [하한, 상한] (n이 작거나 비율이 0·1에 가까워도 범위 안에 머문다)
+export function wilson(k, n, z = 1.959963984540054) {
+  if (!n) return [NaN, NaN];
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const c = (p + (z * z) / (2 * n)) / d;
+  const h = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return [k === 0 ? 0 : Math.max(0, c - h), k === n ? 1 : Math.min(1, c + h)];
+}

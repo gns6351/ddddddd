@@ -8,15 +8,18 @@ import { judgeTransform, judgeCheck } from './llm.js';
 
 const cp = (s) => [...String(s ?? '')].length;
 
-// 2인칭이 남았는지: 앞뒤가 한글이 아닌 '너/넌/널/네가/니가/당신…'만 본다('너무'·'너머'는 제외)
+// 2인칭이 남았는지: 앞뒤가 한글이 아닌 '너/넌/널/네가/니가/당신…'('너무'·'너머'는 제외)
+// + 소유격 '네/니 + 공백 + 한글'(네 페이스, 니 생각). 수량 표현(네 번·네 가지·네 개…)은 제외
 const SECOND_PERSON = /(?<![가-힣])(너(?:는|를|의|도|한테|에게|랑|만|가|희|희들)?|넌|널|네가|니가|당신(?:은|이|의|도|을|에게|한테|께서)?)(?![가-힣])/u;
+const COUNTERS = '번째|번|가지|개|명|시간|시|살|차례|권|장|달|주|해|군데|마리|곳|줄|문제|과목|단계|글자|페이지|배';
+const SECOND_POSSESSIVE = new RegExp(`(?<![가-힣])(네|니)\\s+(?!(?:${COUNTERS})(?![가-힣]))[가-힣]`, 'u');
 
 // 형식 점검(규칙): 빈 출력 · 2인칭 남음 · 지나친 길이 증가
 export function formatCheck(advice, self, rules = {}) {
   const errors = [];
   const text = String(self ?? '').trim();
   if (!text) errors.push('empty');
-  if (text && SECOND_PERSON.test(text)) errors.push('second_person');
+  if (text && (SECOND_PERSON.test(text) || SECOND_POSSESSIVE.test(text))) errors.push('second_person');
   const a = cp(String(advice).trim());
   const b = cp(text);
   const ratio = Number(rules.maxLengthRatio) || 2.5;
@@ -27,11 +30,13 @@ export function formatCheck(advice, self, rules = {}) {
   return { pass: errors.length === 0, errors, length: { advice: a, self: b, limit: Math.round(limit) } };
 }
 
-function withTimeout(promise, ms) {
+// 시간이 지나면 실패로 처리하고, 보낸 요청도 abortSignal로 취소한다
+function withTimeout(start, ms) {
+  const ac = new AbortController();
   let t;
   return Promise.race([
-    promise,
-    new Promise((_, reject) => { t = setTimeout(() => reject(Object.assign(new Error(`timeout ${ms}ms`), { name: 'AbortError' })), ms); }),
+    start(ac.signal),
+    new Promise((_, reject) => { t = setTimeout(() => { ac.abort(); reject(Object.assign(new Error(`timeout ${ms}ms`), { name: 'AbortError' })); }, ms); }),
   ]).finally(() => clearTimeout(t));
 }
 const errCode = (err) => (err?.name === 'AbortError' || /timed? ?out|timeout|aborted/i.test(String(err?.message)) ? 'TIMEOUT' : err?.status ? `HTTP_${err.status}` : 'NETWORK');
@@ -42,7 +47,7 @@ export function createAsker(llm, timeoutMs, calls) {
     const t0 = Date.now();
     const base = { kind, attempt, at: new Date(t0).toISOString(), llmMode: llm.mode, prompt: `${prompt.ref}@${prompt.hash}` };
     try {
-      const { raw, meta } = await withTimeout(llm.call(kind, { promptText: renderPrompt(prompt, vars), schema: prompt.schema, temperature: prompt.temperature, mockInput, attempt }), timeoutMs);
+      const { raw, meta } = await withTimeout((signal) => llm.call(kind, { promptText: renderPrompt(prompt, vars), schema: prompt.schema, temperature: prompt.temperature, mockInput, attempt, signal }), timeoutMs);
       const j = judge(raw);
       calls.push({ ...base, ...meta, latencyMs: Date.now() - t0, raw, valid: j.valid, error: j.error || null });
       return j.valid ? j : { error: j.error };
@@ -53,15 +58,15 @@ export function createAsker(llm, timeoutMs, calls) {
   };
 }
 
-// 변환 점검 한 번: 형식(규칙) → 통과하면 의미(AI). result = pass | format_fail | meaning_fail | check_error
+// 변환 점검 한 번: 형식(규칙) → 통과하면 의미(AI: 반전·추가·forcing). result = pass | format_fail | meaning_fail | check_error
 export async function runCheck({ ask, prompts, advice, self, checkRules, attempt = 1 }) {
   const format = formatCheck(advice, self, checkRules);
   const check = { attempt, format, meaning: null, result: null, error: null };
   if (!format.pass) { check.result = 'format_fail'; return check; }
   const m = await ask('check', prompts.check, { advice, self }, { attempt, judge: judgeCheck, mockInput: `${advice}\n${self}` });
   if (m.error) { check.result = 'check_error'; check.error = m.error; return check; }
-  check.meaning = { reversal: m.reversal, addition: m.addition, note: m.note };
-  check.result = m.reversal || m.addition ? 'meaning_fail' : 'pass';
+  check.meaning = { reversal: m.reversal, addition: m.addition, forcing: m.forcing, note: m.note };
+  check.result = m.reversal || m.addition || m.forcing ? 'meaning_fail' : 'pass';
   return check;
 }
 

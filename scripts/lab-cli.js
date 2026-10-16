@@ -1,8 +1,10 @@
 // 실험실 터미널 명령 (대시보드 '실험' 탭과 같은 일을 한다)
 //   npm run samples -- --personas all --labels ok,not_advice,blame --n 3   페르소나 샘플 생성
 //   npm run samples -- --seed                                              예시 샘플 불러오기
-//   npm run experiment -- --repeats 3 --note "v4 첫 실행"                   실험 실행(샘플 전체 + 오류 주입 세트)
-//   npm run inject -- --types reversal,addition,intensity_up,overgeneral,wording --limit 10   오류 주입 세트 만들기(최근 실행 기준)
+//   npm run experiment -- --scope pilot --note "파일럿 1"                   파일럿 샘플만 실행
+//   npm run experiment -- --note "본 실행"                                  본 실행(파일럿 제외 샘플, 1회)
+//   npm run inject -- --limit 10 --samples s1,s2                           오류 주입 세트 만들기(최근 샘플 실행의 점검 통과 문장 기준)
+//   npm run experiment -- --scope injected                                 주입 문장만 점검
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadSettings, loadContent, loadPrompt } from '../server/config.js';
@@ -39,14 +41,15 @@ if (cmd === 'samples') {
 } else if (cmd === 'experiment') {
   const prompts = { transform: loadPrompt(settings.contentDir, 'transform', settings.transformPrompt), check: loadPrompt(settings.contentDir, 'check', settings.checkPrompt) };
   const [samples, injected] = await Promise.all([lab.listSamples(), lab.listInjected()]);
-  console.log(`샘플 ${samples.length}개 · 오류 주입 ${injected.length}개 · 반복 ${arg('repeats', 1)}회`);
-  const { runId } = await lab.run({ llm, prompts, character: c.character, safety: createSafety(c.safety), checkRules: c.study.check, timeoutMs: settings.timeoutMs, repeats: Number(arg('repeats', 1)), includeInjected: !has('no-injected'), note: arg('note', ''), samples, injected });
+  const scope = arg('scope', 'main');
+  console.log(`범위 ${scope} · 샘플 세트 ${samples.length}개(파일럿 ${samples.filter((x) => x.split === 'pilot').length}) · 오류 주입 ${injected.length}개 · 반복 ${arg('repeats', 1)}회`);
+  const { runId } = await lab.run({ scope, llm, prompts, character: c.character, safety: createSafety(c.safety), checkRules: c.study.check, timeoutMs: settings.timeoutMs, repeats: Number(arg('repeats', 1)), includeInjected: has('with-injected'), note: arg('note', ''), samples, injected });
   console.log(`저장: ${path.join(settings.dataDir, 'lab', 'runs', `${runId}.json`)} — 결과와 코딩은 대시보드 '결과'·'코딩' 탭에서 봐요.`);
 } else if (cmd === 'inject') {
-  const run = (await lab.listRuns()).at(-1);
+  const run = (await lab.listRuns()).filter((r) => r.scope !== 'injected').at(-1);
   if (!run) { console.error('먼저 npm run experiment로 한 번 실행해 주세요.'); process.exit(1); }
-  const r = await lab.inject({ llm, prompt: loadPrompt(settings.contentDir, 'inject', settings.injectPrompt), criteria: c.criteria, run, types: list(arg('types', c.criteria.inject.map((t) => t.id).join(','))), limit: Number(arg('limit', 10)), timeoutMs: settings.timeoutMs * 2 });
-  console.log(`오류 주입 문장 ${r.added}개를 만들었어요 (실행 ${run.runId} 기준).${r.failed.length ? ` 실패 ${r.failed.length}건` : ''}`);
+  const r = await lab.inject({ llm, prompt: loadPrompt(settings.contentDir, 'inject', settings.injectPrompt), criteria: c.criteria, run, types: list(arg('types', c.criteria.inject.map((t) => t.id).join(','))), limit: Number(arg('limit', 10)), sampleIds: arg('samples') ? list(arg('samples')) : null, timeoutMs: settings.timeoutMs * 2 });
+  console.log(`오류 주입 문장 ${r.added}개를 만들었어요 (실행 ${run.runId} 기준).${r.skipped.length ? ` 건너뜀 ${r.skipped.length}건(조건 없는 문장의 선택·유보 삭제 등)` : ''}${r.failed.length ? ` 실패 ${r.failed.length}건` : ''}`);
 } else {
   console.log('사용법: node scripts/lab-cli.js samples|experiment|inject [옵션] (파일 맨 위 설명 참고)');
 }

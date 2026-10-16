@@ -1,7 +1,9 @@
 // 실험실: 사람 참가자 없이 하는 실험의 자료와 실행 (data/lab/)
-//   samples.json  : 샘플 조언 세트 (연구자 작성·페르소나 생성·공개 데이터·예시). intended = 의도한 정답 라벨
+//   samples.json  : 샘플 조언 세트 (연구자 작성·페르소나 생성·공개 데이터·예시). intended = 의도한 정답 라벨,
+//                   split = main(본 실행) | pilot(파일럿, 본 실행에 쓰지 않음)
 //   injected.json : 오류 주입 세트 (올바른 변환문에 오류를 하나 넣은 문장. 점검이 막아야 하는지 = expect)
 //   runs/<id>.json: 실험 실행 결과 (샘플 × 반복으로 전체 파이프라인, 주입 세트 × 반복으로 점검만)
+//                   scope = main(본 샘플) | pilot(파일럿 샘플) | injected(주입 문장 점검만)
 // 생성·실행은 시간이 걸려 백그라운드 작업 하나로 돌리고 진행 상황을 job으로 알려 준다.
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -43,6 +45,7 @@ export function createLab(dataDir) {
       id: typeof x.id === 'string' && /^[\w-]{1,40}$/.test(x.id) ? x.id : rid('s'),
       advice, intended: x.intended,
       source: SOURCES.includes(x.source) ? x.source : 'other',
+      split: x.split === 'pilot' ? 'pilot' : 'main',
       persona: typeof x.persona === 'string' ? x.persona.slice(0, 40) : null,
       style: typeof x.style === 'string' ? x.style.slice(0, 80) : '',
       note: typeof x.note === 'string' ? x.note.slice(0, 300) : '',
@@ -175,33 +178,42 @@ export function createLab(dataDir) {
   }
 
   // 오류 주입: 실행 결과에서 올바르게 변환된(첫 점검 통과) 문장을 골라 유형별로 오류를 하나씩 넣는다
-  function inject({ llm, prompt, criteria, run, types, limit, timeoutMs }) {
+  function inject({ llm, prompt, criteria, run, types, limit, sampleIds, timeoutMs }) {
     const defs = criteria.inject.filter((t) => types.includes(t.id));
     if (!defs.length) throw err('오류 유형을 하나 이상 골라 주세요');
-    const bases = run.items.filter((x) => x.rep === 1 && x.firstSelf && x.firstCheck?.result === 'pass').slice(0, Math.max(1, Number(limit) || 10));
-    if (!bases.length) throw err('이 실행에는 점검을 통과한 변환문이 없어요');
+    const passed = run.items.filter((x) => x.rep === 1 && x.firstSelf && x.firstCheck?.result === 'pass');
+    // 기준 문장: 고른 샘플(sampleIds 순서대로) 또는 앞에서부터 limit개. 선택·유보 삭제를 만들려면 조건이 있는 문장을 포함해야 한다
+    const picked = Array.isArray(sampleIds) && sampleIds.length ? sampleIds.map((id) => passed.find((x) => x.sampleId === id)).filter(Boolean) : passed;
+    const bases = picked.slice(0, Math.max(1, Number(limit) || 10));
+    if (!bases.length) throw err('이 실행에는 점검을 통과한 변환문이 없어요(또는 고른 샘플이 점검을 통과하지 않았어요)');
     const tasks = bases.flatMap((b) => defs.map((t) => ({ b, t })));
     return startJob('inject', tasks.length, async (cur) => {
       const calls = [];
       const ask = createAsker(llm, timeoutMs, calls);
       const items = [];
       const failed = [];
+      const skipped = []; // 넣을 수 없어 건너뜀(조건이 없는 문장의 선택·유보 삭제 등)
       for (const { b, t } of tasks) {
         const r = await ask('inject', prompt, { advice: b.advice, self: b.firstSelf, error_instruction: t.instruction }, { judge: judgeInject, mockInput: { self: b.firstSelf, type: t.id } });
-        if (r.error) failed.push({ sampleId: b.sampleId, type: t.id, error: r.error });
+        if (r.error === 'SKIPPED_EMPTY') skipped.push({ sampleId: b.sampleId, type: t.id });
+        else if (r.error) failed.push({ sampleId: b.sampleId, type: t.id, error: r.error });
         else items.push({ type: t.id, advice: b.advice, self: r.self, base: b.firstSelf, sampleId: b.sampleId, source: 'llm', gen: { model: llm.mode === 'live' ? llm.genModel : 'mock', prompt: `${prompt.ref}@${prompt.hash}`, run: run.runId } });
         cur.done += 1;
       }
       const added = items.length ? await addInjected(items, criteria) : [];
-      return { added: added.length, failed };
+      return { added: added.length, failed, skipped };
     });
   }
 
   // 실험 실행: 샘플마다 전체 파이프라인(규칙 → 판정·변환 → 점검 → 다시 변환)을 repeats번, 주입 세트는 점검만 repeats번
-  function run({ llm, prompts, character, safety, checkRules, timeoutMs, repeats = 1, includeInjected = true, note = '', samples, injected }) {
+  // scope: main = 본 샘플(파일럿 제외) + (선택) 주입 세트, pilot = 파일럿 샘플만, injected = 주입 세트 점검만
+  function run({ llm, prompts, character, safety, checkRules, timeoutMs, repeats = 1, includeInjected = true, scope = 'main', note = '', samples: all, injected }) {
     const R = Math.min(5, Math.max(1, Number(repeats) || 1));
-    if (!samples.length) throw err('샘플이 없어요. 먼저 샘플 세트를 만들어 주세요');
-    const inj = includeInjected ? injected : [];
+    const sc = ['main', 'pilot', 'injected'].includes(scope) ? scope : 'main';
+    const samples = sc === 'injected' ? [] : all.filter((x) => (x.split === 'pilot') === (sc === 'pilot'));
+    const inj = sc === 'injected' || (sc === 'main' && includeInjected) ? injected : [];
+    if (sc !== 'injected' && !samples.length) throw err(sc === 'pilot' ? '파일럿 샘플이 없어요. 샘플의 구분을 "파일럿"으로 바꿔 주세요' : '본 실행 샘플이 없어요. 먼저 샘플 세트를 만들어 주세요');
+    if (sc === 'injected' && !inj.length) throw err('오류 주입 세트가 비었어요');
     const runId = `${now().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-')}-${crypto.randomBytes(2).toString('hex')}`; // 같은 초에 실행해도 겹치지 않게
     return startJob('run', (samples.length + inj.length) * R, async (cur) => {
       const items = [];
@@ -226,7 +238,7 @@ export function createLab(dataDir) {
         }
       }
       const rec = {
-        runId, at: now(), note: String(note || '').slice(0, 200), repeats: R, llmMode: llm.mode, model: llm.model, checkModel: llm.checkModel,
+        runId, at: now(), note: String(note || '').slice(0, 200), scope: sc, repeats: R, llmMode: llm.mode, model: llm.model, checkModel: llm.checkModel,
         prompts: { transform: `${prompts.transform.ref}@${prompts.transform.hash}`, check: `${prompts.check.ref}@${prompts.check.hash}` },
         checkRules, timeoutMs, samples: samples.length, injectedCount: inj.length, items, injected: injectedOut,
       };

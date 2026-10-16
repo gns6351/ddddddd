@@ -137,7 +137,12 @@ export function createApp(overrides = {}, deps = {}) {
   }));
 
   // ---- 연구자 ----
+  // 비밀번호가 없으면 이 PC에서, 주소창이 localhost·127.0.0.1일 때만 연다(DNS 리바인딩 대비)
+  const localHost = (req) => /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(req.get('host') || '');
   function requireAdmin(req) {
+    if (!settings.adminToken && !isRemote(req) && !localHost(req)) {
+      throw new flow.FlowError('연구자 화면은 http://localhost 주소로 열어 주세요. 다른 주소로 열려면 .env에 ADMIN_TOKEN을 정하세요.', 403);
+    }
     if (settings.adminToken) {
       const header = req.get('authorization') || '';
       const a = Buffer.from(header.startsWith('Bearer ') ? header.slice(7) : '');
@@ -182,7 +187,7 @@ export function createApp(overrides = {}, deps = {}) {
     res.json({
       samples: samples.map((x) => ({ ...x, gold: resolve(codes.gold.items[x.id]) })),
       injected: injected.map((x) => ({ ...x, coded: resolve(codes.injected.items[x.id]) })),
-      runs: runs.map((r) => ({ runId: r.runId, at: r.at, note: r.note, repeats: r.repeats, llmMode: r.llmMode, model: r.model, checkModel: r.checkModel, prompts: r.prompts, samples: r.samples, injectedCount: r.injectedCount, passedBases: r.items.filter((x) => x.rep === 1 && x.firstCheck?.result === 'pass').length })),
+      runs: runs.map((r) => ({ runId: r.runId, at: r.at, note: r.note, scope: r.scope || 'main', repeats: r.repeats, llmMode: r.llmMode, model: r.model, checkModel: r.checkModel, prompts: r.prompts, samples: r.samples, injectedCount: r.injectedCount, passedBases: r.items.filter((x) => x.rep === 1 && x.firstCheck?.result === 'pass').length, bases: r.items.filter((x) => x.rep === 1 && x.firstCheck?.result === 'pass').map((x) => ({ sampleId: x.sampleId, advice: x.advice, self: x.firstSelf })) })),
       seedCount: seed.items?.length || 0,
       ...lab.status(),
     });
@@ -203,7 +208,7 @@ export function createApp(overrides = {}, deps = {}) {
   app.post('/api/admin/lab/samples/delete', admin(async (req, res) => res.json({ removed: await lab.removeSamples(Array.isArray(json(req).ids) ? json(req).ids : []) })));
   app.post('/api/admin/lab/samples/:id', admin(async (req, res) => {
     const b = json(req);
-    const patch = Object.fromEntries(['advice', 'intended', 'source', 'note', 'style'].filter((k) => b[k] !== undefined).map((k) => [k, b[k]]));
+    const patch = Object.fromEntries(['advice', 'intended', 'source', 'note', 'style', 'split'].filter((k) => b[k] !== undefined).map((k) => [k, b[k]]));
     res.json(await lab.updateSample(req.params.id, patch));
   }));
   app.get('/api/admin/lab/samples.json', admin(async (req, res) => {
@@ -234,7 +239,7 @@ export function createApp(overrides = {}, deps = {}) {
     const runs = await lab.listRuns();
     const run = runs.find((r) => r.runId === b.runId) || runs.at(-1);
     if (!run) throw new flow.FlowError('먼저 실험을 한 번 실행해 주세요(변환문이 있어야 오류를 넣을 수 있어요)', 422);
-    const p = lab.inject({ llm, prompt: loadPrompt(settings.contentDir, 'inject', settings.injectPrompt), criteria: content().criteria, run, types: b.types || [], limit: b.limit, timeoutMs: settings.timeoutMs * 2 });
+    const p = lab.inject({ llm, prompt: loadPrompt(settings.contentDir, 'inject', settings.injectPrompt), criteria: content().criteria, run, types: b.types || [], limit: b.limit, sampleIds: Array.isArray(b.sampleIds) ? b.sampleIds.map(String) : null, timeoutMs: settings.timeoutMs * 2 });
     if (b.wait) return res.json(await p);
     res.status(202).json({ started: true });
   }));
@@ -244,27 +249,35 @@ export function createApp(overrides = {}, deps = {}) {
     const b = json(req);
     const c = content();
     const [samples, injected] = await Promise.all([lab.listSamples(), lab.listInjected()]);
-    const p = lab.run({ llm, prompts: prompts(), character: c.character, safety: createSafety(c.safety), checkRules: c.study.check, timeoutMs: settings.timeoutMs, repeats: b.repeats, includeInjected: b.includeInjected !== false, note: b.note, samples, injected });
+    const p = lab.run({ llm, prompts: prompts(), character: c.character, safety: createSafety(c.safety), checkRules: c.study.check, timeoutMs: settings.timeoutMs, repeats: b.repeats, includeInjected: b.includeInjected !== false, scope: b.scope, note: b.note, samples, injected });
     if (b.wait) return res.json(await p);
     res.status(202).json({ started: true });
   }));
   app.delete('/api/admin/lab/runs/:runId', admin(async (req, res) => { await lab.removeRun(req.params.runId); res.status(204).end(); }));
 
   // ---- 결과 ----
+  // 결과 대상 실행. 기본은 가장 최근의 샘플 실행(본·파일럿). 그 실행에 주입 결과가 없으면,
+  // 그 뒤에 한 "주입 문장만 점검" 실행 중 가장 최근 것을 붙인다(절차: 본 실행 → 오류 주입 → 주입만 재실행)
+  const withInjected = (runs, run) => {
+    if (!run || run.scope === 'injected' || (run.injected || []).length) return run;
+    const later = runs.filter((r) => r.scope === 'injected' && r.at > run.at).at(-1);
+    return later ? { ...run, injected: later.injected, injectedCount: later.injectedCount, injectedFrom: later.runId } : run;
+  };
   async function resultFor(runId) {
     const all = await allCodes();
-    const run = all.runs.find((r) => r.runId === runId) || all.runs.at(-1);
-    return { ...all, run };
+    const sampleRuns = all.runs.filter((r) => r.scope !== 'injected');
+    const run = withInjected(all.runs, all.runs.find((r) => r.runId === runId) || sampleRuns.at(-1) || all.runs.at(-1));
+    return { ...all, run, sampleRuns: sampleRuns.map((r) => withInjected(all.runs, r)) };
   }
   app.get('/api/admin/results', admin(async (req, res) => {
-    const { codes, keys, samples, runs, run } = await resultFor(String(req.query.run || ''));
+    const { codes, keys, samples, sampleRuns, run } = await resultFor(String(req.query.run || ''));
     const c = content();
     if (!run) return res.json({ empty: true, runs: [] });
     const errIds = c.criteria.errors.map((e) => e.id);
     const runKeys = keys.validation.filter((k) => k.startsWith(`${run.runId}:`));
     res.json({
       ...computeResults({ run, samples, codes, criteria: c.criteria }),
-      compare: compareRuns(runs, samples, codes, c.criteria),
+      compare: compareRuns(sampleRuns, samples, codes, c.criteria),
       agreement: {
         gold: agreementReport('gold', codes.gold, keys.gold),
         validation: agreementReport('validation', codes.validation, runKeys, errIds),
@@ -299,7 +312,7 @@ export function createApp(overrides = {}, deps = {}) {
     if (sheet === 'gold') items = samples.map((x) => ({ key: x.id, data: { advice: x.advice } }));
     else if (sheet === 'injected') items = injected.map((x) => ({ key: x.id, data: { advice: x.advice, self: x.self } }));
     else {
-      runId = String(req.query.run || runs.at(-1)?.runId || '');
+      runId = String(req.query.run || runs.filter((r) => r.scope !== 'injected').at(-1)?.runId || ''); // 기본 = 가장 최근 샘플 실행
       items = codingTargets(runs).filter((t) => t.run.runId === runId).map((t) => ({ key: t.key, data: { advice: t.item.advice, self: t.item.firstSelf } }));
     }
     const rows = items.map((it) => {
@@ -308,7 +321,7 @@ export function createApp(overrides = {}, deps = {}) {
       return { blindId: r.blindId, ...it.data, mine: r[coder], ...extra, resolved: resolve(r) };
     }).filter((x) => coder !== 'final' || x.resolved.status === 'conflict' || x.final != null);
     rows.sort((a, b) => a.blindId.localeCompare(b.blindId));
-    res.json({ sheet, coder, run: runId, runs: runs.map((r) => ({ runId: r.runId, prompts: r.prompts, at: r.at, note: r.note })), items: rows });
+    res.json({ sheet, coder, run: runId, runs: runs.filter((r) => r.scope !== 'injected').map((r) => ({ runId: r.runId, scope: r.scope || 'main', prompts: r.prompts, at: r.at, note: r.note })), items: rows });
   }));
 
   app.post('/api/admin/coding/:sheet', admin(async (req, res) => {

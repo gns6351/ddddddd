@@ -28,8 +28,8 @@ export function loadSettings(overrides = {}) {
     thinking: env.GEMINI_THINKING_LEVEL ?? 'low',
     // 응답 지연 기준(호출 1회). 넘으면 실패 경로. 파일럿에서 정한다
     timeoutMs: Number(env.LLM_TIMEOUT_MS || 15000),
-    transformPrompt: env.TRANSFORM_PROMPT || 'v4',
-    checkPrompt: env.CHECK_PROMPT || 'v1',
+    transformPrompt: env.TRANSFORM_PROMPT || 'v5',
+    checkPrompt: env.CHECK_PROMPT || 'v2',
     personaPrompt: env.PERSONA_PROMPT || 'v1',
     injectPrompt: env.INJECT_PROMPT || 'v1',
     // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)

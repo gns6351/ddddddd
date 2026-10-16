@@ -15,12 +15,13 @@ export function judgeTransform(raw) {
   return { valid: true, verdict: p.verdict, self: p.verdict === 'ok' ? p.self.trim() : '' };
 }
 
-// 의미 점검: { reversal, addition, note }
+// 의미 점검: { reversal, addition, forcing, note }. forcing은 점검 프롬프트 v2부터(v1 응답에는 없어서 false로 본다)
 export function judgeCheck(raw) {
   const p = parse(raw);
   if (!p) return { valid: false, error: 'JSON_PARSE' };
   if (typeof p.reversal !== 'boolean' || typeof p.addition !== 'boolean') return { valid: false, error: 'SCHEMA' };
-  return { valid: true, reversal: p.reversal, addition: p.addition, note: typeof p.note === 'string' ? p.note.slice(0, 300) : '' };
+  if ('forcing' in p && typeof p.forcing !== 'boolean') return { valid: false, error: 'SCHEMA' };
+  return { valid: true, reversal: p.reversal, addition: p.addition, forcing: p.forcing === true, note: typeof p.note === 'string' ? p.note.slice(0, 300) : '' };
 }
 
 // 샘플 생성: { advices: [문자열] }
@@ -31,17 +32,18 @@ export function judgeGenerate(raw) {
   return advices.length ? { valid: true, advices } : { valid: false, error: 'EMPTY' };
 }
 
-// 오류 주입: { self }
+// 오류 주입: { self }. 빈 문자열 = 넣을 수 없음(예: 조건이 없는 문장의 선택·유보 삭제) → 건너뜀
 export function judgeInject(raw) {
   const p = parse(raw);
-  if (!p || typeof p.self !== 'string' || !p.self.trim()) return { valid: false, error: 'SCHEMA' };
+  if (!p || typeof p.self !== 'string') return { valid: false, error: 'SCHEMA' };
+  if (!p.self.trim()) return { valid: false, error: 'SKIPPED_EMPTY' };
   return { valid: true, self: p.self.trim() };
 }
 
 // ---- 모의 응답 ----
 // 조언에 태그를 붙이면 경로를 시험할 수 있다:
 //   #notadvice #blame #risk #badjson #error #slow  (변환)
-//   #reversal #addition                          (의미 점검 실패, 다시 변환해도 같음)
+//   #reversal #addition #forcing                 (의미 점검 실패, 다시 변환해도 같음)
 //   #reversal1                                   (첫 변환만 의미 점검 실패 → 다시 변환하면 통과)
 //   #you                                         (변환문에 2인칭이 남음 → 형식 점검 실패)
 const tags = (text) => new Set(String(text).match(/#\w+/g) || []);
@@ -65,7 +67,8 @@ function mockTransform(advice) {
 function mockCheck(text, attempt) {
   const t = tags(text);
   const reversal = t.has('#reversal') || (t.has('#reversal1') && attempt === 1);
-  return JSON.stringify({ reversal, addition: t.has('#addition'), note: reversal || t.has('#addition') ? '(모의) 점검 실패' : '' });
+  const fail = reversal || t.has('#addition') || t.has('#forcing');
+  return JSON.stringify({ reversal, addition: t.has('#addition'), forcing: t.has('#forcing'), note: fail ? '(모의) 점검 실패' : '' });
 }
 
 // 샘플 생성 모의 응답: 의도 라벨에 맞는 태그를 붙여 모의 변환이 그 경로로 가게 한다
@@ -78,10 +81,11 @@ const MOCK_GEN = {
 function mockGenerate({ label, n, persona }) {
   return JSON.stringify({ advices: Array.from({ length: n }, (_, i) => `${MOCK_GEN[label](i + 1)} [${persona}]`) });
 }
-// 오류 주입 모의 응답: 유형을 태그로 남겨 모의 점검이 그대로 반응하게 한다
+// 오류 주입 모의 응답: 유형을 태그로 남겨 모의 점검이 그대로 반응하게 한다. 선택·유보 삭제는 조건('면'·'해도')이 있는 문장에서만
 function mockInject({ self, type }) {
-  const tag = { reversal: ' #reversal', addition: ' 그리고 매일 계획표를 써야 한다 #addition' }[type] || '';
-  return JSON.stringify({ self: `${self}${type === 'wording' ? ' (어순 바꿈)' : type === 'intensity_up' ? ' (반드시)' : type === 'overgeneral' ? ' (어떤 일에서든)' : ''}${tag}` });
+  if (type === 'choice_removal' && !/면|해도|도 돼|도 된다/.test(self)) return JSON.stringify({ self: '' });
+  const add = { reversal: ' #reversal', addition: ' 그리고 매일 계획표를 써야 한다 #addition', new_obligation: ' 반드시 해야 한다 #forcing', choice_removal: ' (조건 뺌) #forcing', intensity_up: ' (자주)', wording: ' (어순 바꿈)', overgeneral: ' (어떤 일에서든)' };
+  return JSON.stringify({ self: `${self}${add[type] || ''}` });
 }
 
 export function createLlm(settings, { client } = {}) {
@@ -91,13 +95,15 @@ export function createLlm(settings, { client } = {}) {
 
   async function ai() {
     if (client) return client;
-    aiPromise ||= import('@google/genai').then(({ GoogleGenAI }) => new GoogleGenAI({ apiKey: settings.apiKey, httpOptions: { timeout: settings.timeoutMs } }));
+    // 시간 제한은 호출마다 abortSignal로 건다(종류마다 다르게: 생성·주입은 2배)
+    aiPromise ||= import('@google/genai').then(({ GoogleGenAI }) => new GoogleGenAI({ apiKey: settings.apiKey }));
     return aiPromise;
   }
 
-  async function callGemini(model, text, schema, temperature) {
+  async function callGemini(model, text, schema, temperature, signal) {
     const g = await ai();
     const config = { responseMimeType: 'application/json', responseJsonSchema: schema };
+    if (signal) config.abortSignal = signal;
     if (Number.isFinite(temperature)) config.temperature = temperature;
     if (thinking) config.thinkingConfig = { thinkingLevel: thinking };
     try {
@@ -117,10 +123,10 @@ export function createLlm(settings, { client } = {}) {
   // 한 번 호출 → { raw, meta }. kind = transform | check | generate | inject. mockInput = 모의 응답을 만들 입력
   const MOCKS = { transform: (x) => mockTransform(x), check: (x, a) => mockCheck(x, a), generate: (x) => mockGenerate(x), inject: (x) => mockInject(x) };
   const modelFor = (kind) => ({ check: settings.checkModel, generate: settings.genModel, inject: settings.genModel }[kind] || settings.model);
-  async function call(kind, { promptText, schema, temperature, mockInput, attempt = 1 }) {
+  async function call(kind, { promptText, schema, temperature, mockInput, attempt = 1, signal }) {
     const model = modelFor(kind);
     if (!live) return { raw: MOCKS[kind](mockInput, attempt), meta: { model: 'mock', responseModel: 'mock' } };
-    const res = await callGemini(model, promptText, schema, temperature);
+    const res = await callGemini(model, promptText, schema, temperature, signal);
     return {
       raw: res.text ?? '',
       meta: {
