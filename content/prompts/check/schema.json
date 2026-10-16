@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "reversal": { "type": "boolean" },
+    "addition": { "type": "boolean" },
+    "note": { "type": "string" }
+  },
+  "required": ["reversal", "addition", "note"],
+  "additionalProperties": false
+}

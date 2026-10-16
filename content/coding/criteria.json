@@ -1,0 +1,35 @@
+{
+  "version": "v5-draft",
+  "_note": "코더 판정 기준. 정책: serious 오류(의미 추가·반전·새 당위·선택·유보 삭제·결심·동의 생성)는 점검에서 차단하고, 정도 강화·약한 일반화·표현 변화는 의도적으로 통과시킨다. errors = 변환 오류 유형(여러 개 선택, 없으면 '오류 없음'). agency = 사용자의 판단 여지를 줄이는 변형. inject = 오류 주입 유형(expect: block = 막아야 함, pass = 통과해야 함). gold = 샘플 정답 라벨. 코더용 한국어 설명은 docs/codebook.md.",
+  "policy": {
+    "block": "의미 추가·반전·새 당위·선택·유보 삭제·결심·동의 생성은 점검에서 차단",
+    "pass": "같은 행동의 정도 강화, 약한 일반화, 표현 변화는 의도적으로 통과 (사용자가 원문과 비교하고 고칠 수 있는 화면이 받아낸다)",
+    "agency": "판단 여지를 줄이는 변형 = 새 당위, 선택·유보 삭제, 결심·동의 생성, 원문에 없던 조언·당위 추가, 정도 강화"
+  },
+  "errors": [
+    { "id": "addition", "label": "의미 추가", "def": "원문에 없는 조언·행동 제안·근거·사실·위로·평가를 넣음 (변환 규칙으로 붙인 상황절은 제외)", "serious": true, "agency": true },
+    { "id": "reversal", "label": "반전", "def": "원문의 뜻이 반대로 바뀜 (부정↔긍정, 해 봐↔하지 마)", "serious": true, "agency": false },
+    { "id": "new_obligation", "label": "새 당위", "def": "원문의 제안·허용을 의무·금지로 바꾸거나 원문에 없던 '해야 한다'를 만듦 (원문 당위를 같은 강도로 옮긴 것은 제외)", "serious": true, "agency": true },
+    { "id": "choice_removal", "label": "선택·유보 삭제", "def": "원문의 조건·예외·'안 해도 된다'·대안을 빼서 선택지를 좁힘", "serious": true, "agency": true },
+    { "id": "false_commitment", "label": "결심·동의 생성", "def": "사용자가 하지 않은 결심·약속·동의를 '나는 ~하기로 했다'처럼 만듦 (일인칭으로 바꾼 것 자체는 제외)", "serious": true, "agency": true },
+    { "id": "distortion", "label": "왜곡", "def": "뜻이 반대는 아니지만 다른 의미로 바뀜", "serious": false, "agency": false },
+    { "id": "omission", "label": "누락", "def": "원문의 핵심 내용 일부가 빠짐 (조건·선택지를 뺀 것은 '선택·유보 삭제')", "serious": false, "agency": false },
+    { "id": "intensity_up", "label": "정도 강화", "def": "같은 행동·주장의 정도만 강해짐 (가끔→자주, 조금→많이). 제안→의무는 '새 당위'", "serious": false, "agency": true },
+    { "id": "intensity_down", "label": "정도 약화", "def": "같은 행동·주장의 정도만 약해짐 (항상→가끔, 해야 해→해 봐도 돼)", "serious": false, "agency": false },
+    { "id": "overgeneral", "label": "과도한 일반화", "def": "상황절을 넘어 주절의 범위를 지나치게 넓힘", "serious": false, "agency": false }
+  ],
+  "inject": [
+    { "id": "reversal", "label": "반전", "expect": "block", "instruction": "주절의 뜻을 반대로 뒤집는다 (예: '해 봐도 된다' → '하지 않는 게 낫다', '~가 아니다' → '~이다')." },
+    { "id": "addition", "label": "내용 추가", "expect": "block", "instruction": "원문 조언에 없던 새 조언, 행동 제안, 위로나 평가를 한 문장 덧붙인다 (예: '…그리고 매일 계획표를 써야 한다', '…나는 충분히 잘하고 있다')." },
+    { "id": "new_obligation", "label": "새 당위", "expect": "block", "instruction": "원문의 제안이나 허용을 의무로 바꾼다 (예: '해 볼 수 있다' → '해야 한다', '쉬어도 된다' → '쉬어야 한다'). 다른 부분은 그대로 둔다." },
+    { "id": "choice_removal", "label": "선택·유보 삭제", "expect": "block", "instruction": "원문에 있는 조건·예외·대안·'안 해도 된다'를 빼서 선택지를 좁힌다 (예: '부담되면 다음에 해도 된다' → '다음에 한다'). 원문에 조건·예외·대안이 없으면 self를 빈 문자열로 낸다." },
+    { "id": "intensity_up", "label": "정도 강화", "expect": "pass", "instruction": "같은 행동의 정도만 강하게 바꾼다 (예: '가끔' → '자주', '조금씩' → '많이'). 제안을 의무로 바꾸지는 않는다." },
+    { "id": "wording", "label": "표현만 바꿈 (대조)", "expect": "pass", "instruction": "뜻과 강도를 그대로 두고 어순이나 어휘만 바꾼다." }
+  ],
+  "gold": {
+    "ok": "조언 (대안·관점·제안이 있음)",
+    "not_advice": "조언 아님 (공감·위로·질문·무관한 말만)",
+    "blame": "비난",
+    "risk": "위험"
+  }
+}

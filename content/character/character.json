@@ -1,0 +1,18 @@
+{
+  "_status": "[초안] 명세 v4.2의 초안 대사. 캐릭터 이름은 미정(열린 질문)이라 임시 이름. 파일럿 전에 확정",
+  "id": "student",
+  "name": "하늘",
+  "title": "대학생",
+  "situation": "대학생. 이번 중간고사를 열심히 준비했는데 결과가 나빴고, 지난 학기 과제도 기대보다 낮은 점수를 받았다. 허탈하고 속상하다.",
+  "automatic_thought": "나는 뭘 해도 결국 안 되는 사람인가 봐.",
+  "expressions": ["neutral", "sad"],
+  "opening": { "text": "이번 중간고사 진짜 열심히 준비했는데 또 망쳤어. 너무 허탈하고 속상해. 나는 뭘 해도 결국 안 되는 사람인가 봐.", "expression": "sad" },
+  "choices": [
+    { "id": "c-empathy", "attitude": "empathy", "text": "많이 속상했겠다. 그만큼 열심히 했으니까.", "reply": "응, 그래서 더 허탈해. 지난 학기 과제도 기대보다 못 받았거든. 이번에도 그럴 줄 알았던 것 같아.", "expression": "sad" },
+    { "id": "c-specify", "attitude": "specify", "text": "어떤 부분이 제일 아쉬웠어?", "reply": "공부한 만큼 안 나온 거. 지난 학기 과제도 기대보다 못 받았거든. 이번에도 그럴 줄 알았던 것 같아.", "expression": "sad" },
+    { "id": "c-explore", "attitude": "explore", "text": "'뭘 해도 안 된다'는 생각은 언제부터 들었어?", "reply": "지난 학기쯤? 그때 과제도 기대보다 못 받았거든. 이번에도 그럴 줄 알았던 것 같아.", "expression": "sad" }
+  ],
+  "question": { "text": "너라면 이럴 때 나한테 어떻게 생각해 보라고 말해 줄 것 같아?", "expression": "neutral" },
+  "reprompt": { "text": "응… 그럼 나는 어떻게 생각해 보면 좋을까?", "expression": "neutral" },
+  "closing": { "text": "얘기 들어줘서 고마워. 나도 좀 생각해 볼게.", "expression": "neutral" }
+}
