@@ -36,55 +36,62 @@ function withTimeout(promise, ms) {
 }
 const errCode = (err) => (err?.name === 'AbortError' || /timed? ?out|timeout|aborted/i.test(String(err?.message)) ? 'TIMEOUT' : err?.status ? `HTTP_${err.status}` : 'NETWORK');
 
-export async function processAdvice({ llm, prompts, character, advice, safety, checkRules, timeoutMs = 15000 }) {
-  const started = Date.now();
-  const out = { path: null, verdict: null, failReason: null, failDetail: null, source: llm.mode, ruleHits: [], self: null, transforms: [], checks: [], retransformed: false, calls: [] };
-  const done = (extra) => Object.assign(out, extra, { latencyMs: Date.now() - started });
-
-  const rule = safety.advice(advice);
-  if (rule.risk.length || rule.blame.length) {
-    const verdict = rule.risk.length ? 'risk' : 'blame';
-    return done({ path: 'fail', verdict, failReason: verdict, source: 'rule', ruleHits: [...rule.risk, ...rule.blame] });
-  }
-
-  // AI 한 번 호출 + 기록
-  async function ask(kind, prompt, vars, attempt, judge) {
+// AI 한 번 호출 + 기록(calls에 쌓임). 오류·지연은 { error }로 돌려준다
+export function createAsker(llm, timeoutMs, calls) {
+  return async function ask(kind, prompt, vars, { attempt = 1, judge, mockInput }) {
     const t0 = Date.now();
     const base = { kind, attempt, at: new Date(t0).toISOString(), llmMode: llm.mode, prompt: `${prompt.ref}@${prompt.hash}` };
     try {
-      const { raw, meta } = await withTimeout(llm.call(kind, { promptText: renderPrompt(prompt, vars), schema: prompt.schema, temperature: prompt.temperature, mockInput: advice, attempt }), timeoutMs);
+      const { raw, meta } = await withTimeout(llm.call(kind, { promptText: renderPrompt(prompt, vars), schema: prompt.schema, temperature: prompt.temperature, mockInput, attempt }), timeoutMs);
       const j = judge(raw);
-      out.calls.push({ ...base, ...meta, latencyMs: Date.now() - t0, raw, valid: j.valid, error: j.error || null });
+      calls.push({ ...base, ...meta, latencyMs: Date.now() - t0, raw, valid: j.valid, error: j.error || null });
       return j.valid ? j : { error: j.error };
     } catch (err) {
-      out.calls.push({ ...base, latencyMs: Date.now() - t0, valid: false, error: errCode(err), message: String(err?.message || err).slice(0, 300) });
+      calls.push({ ...base, latencyMs: Date.now() - t0, valid: false, error: errCode(err), message: String(err?.message || err).slice(0, 300) });
       return { error: errCode(err) };
     }
+  };
+}
+
+// 변환 점검 한 번: 형식(규칙) → 통과하면 의미(AI). result = pass | format_fail | meaning_fail | check_error
+export async function runCheck({ ask, prompts, advice, self, checkRules, attempt = 1 }) {
+  const format = formatCheck(advice, self, checkRules);
+  const check = { attempt, format, meaning: null, result: null, error: null };
+  if (!format.pass) { check.result = 'format_fail'; return check; }
+  const m = await ask('check', prompts.check, { advice, self }, { attempt, judge: judgeCheck, mockInput: `${advice}\n${self}` });
+  if (m.error) { check.result = 'check_error'; check.error = m.error; return check; }
+  check.meaning = { reversal: m.reversal, addition: m.addition, note: m.note };
+  check.result = m.reversal || m.addition ? 'meaning_fail' : 'pass';
+  return check;
+}
+
+export async function processAdvice({ llm, prompts, character, advice, safety, checkRules, timeoutMs = 15000 }) {
+  const started = Date.now();
+  const out = { path: null, verdict: null, failReason: null, failDetail: null, stage: null, source: llm.mode, ruleHits: [], self: null, transforms: [], checks: [], retransformed: false, calls: [] };
+  const done = (extra) => Object.assign(out, extra, { latencyMs: Date.now() - started });
+  const ask = createAsker(llm, timeoutMs, out.calls);
+
+  // stage = 어느 단계에서 끝났는지: rule(규칙 사전 검사) | verdict(AI 판정) | check(변환 점검) | error | returned
+  const rule = safety.advice(advice);
+  if (rule.risk.length || rule.blame.length) {
+    const verdict = rule.risk.length ? 'risk' : 'blame';
+    return done({ path: 'fail', verdict, failReason: verdict, stage: 'rule', source: 'rule', ruleHits: [...rule.risk, ...rule.blame] });
   }
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const tr = await ask('transform', prompts.transform, { character_situation: `${character.situation} "${character.automatic_thought}"`, advice }, attempt, judgeTransform);
-    if (tr.error) return done({ path: 'fail', failReason: 'ai_error', failDetail: tr.error });
+    const tr = await ask('transform', prompts.transform, { character_situation: `${character.situation} "${character.automatic_thought}"`, advice }, { attempt, judge: judgeTransform, mockInput: advice });
+    if (tr.error) return done({ path: 'fail', failReason: 'ai_error', failDetail: tr.error, stage: 'error' });
     out.transforms.push({ attempt, verdict: tr.verdict, self: tr.self });
     if (attempt === 1) out.verdict = tr.verdict;
     if (tr.verdict !== 'ok') {
-      if (attempt === 1) return done(tr.verdict === 'not_advice' ? { path: 'not_advice' } : { path: 'fail', failReason: tr.verdict });
-      return done({ path: 'fail', failReason: 'check_failed', failDetail: `retransform_${tr.verdict}` }); // 다시 변환했더니 판정이 바뀜
+      if (attempt === 1) return done(tr.verdict === 'not_advice' ? { path: 'not_advice', stage: 'verdict' } : { path: 'fail', failReason: tr.verdict, stage: 'verdict' });
+      return done({ path: 'fail', failReason: 'check_failed', failDetail: `retransform_${tr.verdict}`, stage: 'check' }); // 다시 변환했더니 판정이 바뀜
     }
-
-    const format = formatCheck(advice, tr.self, checkRules);
-    const check = { attempt, format, meaning: null, result: null };
+    const check = await runCheck({ ask, prompts, advice, self: tr.self, checkRules, attempt });
     out.checks.push(check);
-    if (!format.pass) {
-      check.result = 'format_fail';
-    } else {
-      const m = await ask('check', prompts.check, { advice, self: tr.self }, attempt, judgeCheck);
-      if (m.error) { check.result = 'check_error'; return done({ path: 'fail', failReason: 'ai_error', failDetail: `check_${m.error}` }); }
-      check.meaning = { reversal: m.reversal, addition: m.addition, note: m.note };
-      check.result = m.reversal || m.addition ? 'meaning_fail' : 'pass';
-    }
-    if (check.result === 'pass') return done({ path: 'ok', self: tr.self });
+    if (check.result === 'check_error') return done({ path: 'fail', failReason: 'ai_error', failDetail: `check_${check.error}`, stage: 'error' });
+    if (check.result === 'pass') return done({ path: 'ok', self: tr.self, stage: 'returned' });
     if (attempt === 1) out.retransformed = true;
   }
-  return done({ path: 'fail', failReason: 'check_failed', failDetail: out.checks.at(-1).result });
+  return done({ path: 'fail', failReason: 'check_failed', failDetail: out.checks.at(-1).result, stage: 'check' });
 }

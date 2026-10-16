@@ -23,11 +23,15 @@ export function loadSettings(overrides = {}) {
     model: env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     // 변환 점검 모델. 같은 모델은 자기 출력을 관대하게 볼 수 있어 다른 모델을 권장(비우면 변환 모델과 같음)
     checkModel: env.CHECK_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    // 페르소나 샘플 생성·오류 주입 모델. 변환·점검과 다른 모델을 권장(같은 모델이 만들고 바꾸고 점검하면 결과가 유리해질 수 있음)
+    genModel: env.GEN_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     thinking: env.GEMINI_THINKING_LEVEL ?? 'low',
     // 응답 지연 기준(호출 1회). 넘으면 실패 경로. 파일럿에서 정한다
     timeoutMs: Number(env.LLM_TIMEOUT_MS || 15000),
     transformPrompt: env.TRANSFORM_PROMPT || 'v4',
     checkPrompt: env.CHECK_PROMPT || 'v1',
+    personaPrompt: env.PERSONA_PROMPT || 'v1',
+    injectPrompt: env.INJECT_PROMPT || 'v1',
     // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)
     phase: oneOf(env.STUDY_PHASE, ['pilot', 'main'], 'pilot'),
     // 연구자 화면 비밀번호. 비워 두면 서버 PC(localhost)에서만 비밀번호 없이 열림
@@ -66,7 +70,7 @@ export function loadContent(contentDir) {
   return out;
 }
 
-// 프롬프트: content/prompts/<kind>/<버전>.md (머리말 + 본문). kind = transform | check
+// 프롬프트: content/prompts/<kind>/<버전>.md (머리말 + 본문). kind = transform | check | persona | inject
 export function loadPrompt(contentDir, kind, version) {
   const dir = path.join(contentDir, 'prompts', kind);
   const raw = fs.readFileSync(path.join(dir, `${version}.md`), 'utf8');

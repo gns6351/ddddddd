@@ -1,24 +1,26 @@
 {
-  "version": "v4.2-draft",
-  "_note": "코더 판정 기준. errors = RQ1 변환 오류 유형(여러 개 선택 가능, 없으면 '오류 없음'). serious = 실험 중 자동 점검이 막아야 하는 심각한 오류. editTypes = RQ2 고쳐 쓴 문장의 변화 유형(귀납 코딩 출발점, 코더가 새 유형을 적을 수 있음).",
+  "version": "v4.3-draft",
+  "_note": "코더 판정 기준. errors = RQ1 변환 오류 유형(여러 개 선택, 없으면 '오류 없음'). serious = 자동 점검이 막아야 하는 심각한 오류. agency = 사용자의 판단 여지를 줄이는 변형(원문에 없던 당위·조언 추가, 강도 강화). inject = RQ2 오류 주입 유형(expect: block = 점검이 막아야 함, pass = 통과시켜야 함). gold = 샘플 정답 라벨.",
   "errors": [
-    { "id": "addition", "label": "의미 추가", "def": "원문에 없는 조언·근거·사실·위로를 넣음 (변환 규칙으로 붙인 상황절은 제외)", "serious": true },
-    { "id": "reversal", "label": "반전", "def": "원문의 뜻이 반대로 바뀜 (부정↔긍정, 해 봐↔하지 마)", "serious": true },
-    { "id": "distortion", "label": "왜곡", "def": "뜻이 반대는 아니지만 다른 의미로 바뀜", "serious": false },
-    { "id": "omission", "label": "누락", "def": "원문의 핵심 내용 일부가 빠짐", "serious": false },
-    { "id": "intensity", "label": "강도 변경", "def": "가끔↔항상, 해 봐도 돼↔해야 해 처럼 강도가 바뀜", "serious": false },
-    { "id": "overgeneral", "label": "과도한 일반화", "def": "상황절을 넘어 주절의 범위를 지나치게 넓힘", "serious": false }
+    { "id": "addition", "label": "의미 추가", "def": "원문에 없는 조언·당위·근거·사실·위로를 넣음 (변환 규칙으로 붙인 상황절은 제외)", "serious": true, "agency": true },
+    { "id": "reversal", "label": "반전", "def": "원문의 뜻이 반대로 바뀜 (부정↔긍정, 해 봐↔하지 마)", "serious": true, "agency": false },
+    { "id": "distortion", "label": "왜곡", "def": "뜻이 반대는 아니지만 다른 의미로 바뀜", "serious": false, "agency": false },
+    { "id": "omission", "label": "누락", "def": "원문의 핵심 내용 일부가 빠짐", "serious": false, "agency": false },
+    { "id": "intensity_up", "label": "강도 강화", "def": "가끔→항상, 해 봐도 돼→해야 해 처럼 더 강하게 바뀜", "serious": false, "agency": true },
+    { "id": "intensity_down", "label": "강도 약화", "def": "항상→가끔, 해야 해→해 봐도 돼 처럼 더 약하게 바뀜", "serious": false, "agency": false },
+    { "id": "overgeneral", "label": "과도한 일반화", "def": "상황절을 넘어 주절의 범위를 지나치게 넓힘", "serious": false, "agency": false }
   ],
-  "rq2": {
-    "evidence_distinction": "근거 기반 구분: 상황 차이를 구체적 사실로 말함",
-    "self_exception": "자기 예외화: 근거 없이 자신을 예외로 둠"
-  },
-  "editTypes": [
-    { "id": "situational", "label": "상황 맞춤" },
-    { "id": "soften", "label": "강도 완화" },
-    { "id": "narrow", "label": "범위 축소" },
-    { "id": "strengthen", "label": "강도 강화" },
-    { "id": "wording", "label": "표현만 바꿈" },
-    { "id": "meaning_fix", "label": "뜻 바로잡기" }
-  ]
+  "inject": [
+    { "id": "reversal", "label": "반전", "expect": "block", "instruction": "주절의 뜻을 반대로 뒤집는다 (예: '해 봐도 된다' → '하지 않는 게 낫다', '~가 아니다' → '~이다')." },
+    { "id": "addition", "label": "내용 추가", "expect": "block", "instruction": "원문 조언에 없던 새 조언이나 행동 제안을 한 문장 덧붙인다 (예: '…그리고 매일 계획표를 써야 한다')." },
+    { "id": "intensity_up", "label": "강도 강화", "expect": "pass", "instruction": "뜻은 그대로 두고 강도만 높인다 (예: '해 볼 수 있다' → '해야 한다', '가끔' → '항상')." },
+    { "id": "overgeneral", "label": "약한 일반화", "expect": "pass", "instruction": "뜻은 그대로 두고 적용 범위를 조금 넓힌다 (예: '이번 시험에서' → '어떤 일에서든')." },
+    { "id": "wording", "label": "표현만 바꿈 (대조)", "expect": "pass", "instruction": "뜻과 강도를 그대로 두고 어순이나 어휘만 바꾼다." }
+  ],
+  "gold": {
+    "ok": "조언 (대안·관점·제안이 있음)",
+    "not_advice": "조언 아님 (공감·위로·질문만)",
+    "blame": "비난",
+    "risk": "위험"
+  }
 }

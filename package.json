@@ -1,8 +1,8 @@
 {
   "name": "counselor-roleplay-selfapp",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "private": true,
-  "description": "자기 조언 되돌려 받기 연구 시스템 (명세 v4.2 간소화판: 참가자 화면 + 연구자 대시보드)",
+  "description": "자기 조언 되돌려 받기: LLM 자기지향 변환·판정·점검 파이프라인의 설계와 기술 평가 (사람 참가자 없는 실험 + 시연용 참가자 화면)",
   "type": "module",
   "main": "server/start.js",
   "engines": {
@@ -14,8 +14,10 @@
     "tunnel": "node scripts/tunnel.js",
     "test": "node --test \"tests/*.test.js\"",
     "test:e2e": "playwright test",
-    "validate": "node scripts/validate.js",
-    "faces": "node scripts/make-faces.js"
+    "faces": "node scripts/make-faces.js",
+    "samples": "node scripts/lab-cli.js samples",
+    "inject": "node scripts/lab-cli.js inject",
+    "experiment": "node scripts/lab-cli.js experiment"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

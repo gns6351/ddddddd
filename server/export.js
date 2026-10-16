@@ -1,11 +1,10 @@
-// 내보내기: 한 사람당 한 행 CSV (명세 v4.2 기록 데이터 필드)
+// 내보내기: 시연 세션 한 사람당 한 행 CSV, 공용 CSV 만들기
 import { finalSubmission } from './flow.js';
-import { resolve } from './coding.js';
 
 const val = (v) => (v == null ? '' : v);
 const STEPS = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9'];
 
-export function flattenSession(s, codes = {}) {
+export function flattenSession(s) {
   const subs = s.s3.submissions;
   const fin = finalSubmission(s);
   const lastCall = fin?.calls?.filter((c) => c.kind === 'transform').at(-1);
@@ -44,7 +43,6 @@ export function flattenSession(s, codes = {}) {
     s6_final: val(s.s6?.final),
     s7_reason: val(s.s7?.reasonId),
     s7_category: val(s.s7?.category),
-    s7_category_coded: val(resolve(codes.reason?.items?.[s.id]).value),
     s7_text: val(s.s7?.text),
     q10: val(s.s8?.q10),
     q11: val(s.s8?.q11),
@@ -52,7 +50,6 @@ export function flattenSession(s, codes = {}) {
     path: val(s.path),
     fail_reason: val(s.failReason),
     fail_step: val(s.failStep),
-    transform_errors_coded: (() => { const v = resolve(codes.transform?.items?.[s.id]).value; return Array.isArray(v) ? (v.length ? v.join(';') : 'none') : ''; })(),
     s4_reviewed: s.reviewed ? true : '',
     llm_mode: s.llmMode,
     model: val(s.model),

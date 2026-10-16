@@ -103,3 +103,17 @@ button.danger { background: var(--error); color: #fff; }
 @media print {
   .no-print, #login, #sessions, #exports { display: none !important; }
 }
+
+/* 실험·결과 */
+.jobbar { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
+.scroll.tall { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+td.wrap-text { white-space: pre-wrap; min-width: 220px; }
+table.data td { white-space: pre-line; }
+input.num { width: 72px; }
+.panel textarea { width: 100%; min-height: 72px; }
+.summary { background: var(--bg); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.summary p { margin: 4px 0; font-size: 14px; }
+h3.sub { margin: 20px 0 8px; font-size: 16px; }
+.tiles .tile .big { font-size: 22px; }
+.panel select, .inline-row select, .panel input[type=number] { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+td.nowrap, th.nowrap { white-space: nowrap; }

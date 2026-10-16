@@ -22,44 +22,35 @@
       </div>
     </div>
     <div class="error left" id="err"></div>
-
-    <div class="toolbar no-print" id="toolbar" hidden>
-      <label>AI 모드
-        <select id="f-mode"><option value="all">전체</option><option value="live">실제 호출만</option><option value="mock">모의만</option></select>
-      </label>
-      <label>단계
-        <select id="f-phase"><option value="all">전체</option><option value="main">본실험</option><option value="pilot">파일럿</option></select>
-      </label>
-      <label class="inline"><input type="checkbox" id="f-live" checked> 15초마다 새로고침</label>
-      <button type="button" class="secondary small" id="refresh">지금 새로고침</button>
-      <span class="muted" id="updated"></span>
-    </div>
+    <div class="jobbar no-print" id="job" role="status" hidden></div>
+    <div class="muted no-print" id="job-last"></div>
 
     <nav class="tabs no-print" id="tabs" hidden>
-      <button type="button" data-tab="overview" class="on">한눈에 보기</button>
-      <button type="button" data-tab="rq1">RQ1 변환 품질</button>
-      <button type="button" data-tab="rq2">RQ2 자기적용</button>
+      <button type="button" data-tab="lab" class="on">실험</button>
+      <button type="button" data-tab="results">결과</button>
       <button type="button" data-tab="coding">코딩</button>
-      <button type="button" data-tab="sessions">세션</button>
-      <button type="button" data-tab="exports">내보내기</button>
+      <button type="button" data-tab="sessions">시연 세션</button>
+      <button type="button" data-tab="settings-tab">설정·내보내기</button>
     </nav>
 
-    <section id="overview" data-pane="overview"></section>
-    <section id="rq1" data-pane="rq1" hidden></section>
-    <section id="rq2" data-pane="rq2" hidden></section>
+    <section id="lab" data-pane="lab"></section>
+
+    <section id="results" data-pane="results" hidden>
+      <div class="toolbar no-print"><label>실행 <select id="r-run"></select></label></div>
+      <div id="results-body"></div>
+    </section>
 
     <section id="coding" data-pane="coding" hidden>
-      <p class="muted">두 코더가 각자 독립적으로 판정한 뒤, '합의'에서 서로 다르게 본 항목만 정합니다. 항목은 무작위 ID로 섞여 나오고 참가자는 숨겨져 있습니다. 고르면 바로 저장됩니다. 분석 제외·데이터 철회 세션은 빠집니다.</p>
+      <p class="muted">두 코더가 각자 독립적으로 판정한 뒤 '합의'에서 서로 다르게 본 항목만 정합니다. 항목은 무작위 ID로 섞여 나오고, 의도 라벨·출처·시스템 결과·주입 유형은 숨겨져 있습니다. 고르면 바로 저장됩니다.</p>
       <div class="toolbar">
         <label>시트
           <select id="c-sheet">
-            <option value="validation">RQ1 · 실험 전 검증 (샘플 변환문 오류 유형)</option>
-            <option value="transform">RQ1 · 참가자 조언 변환문 오류 유형</option>
-            <option value="reason">RQ2 · S7 이유 범주 확정</option>
-            <option value="edit">RQ2 · 고쳐 쓴 문장 변화 유형</option>
+            <option value="gold">정답 라벨 (샘플 조언이 조언·조언 아님·비난·위험 중 무엇인지)</option>
+            <option value="validation">변환 오류 (실행의 첫 변환문)</option>
+            <option value="injected">오류 주입 문장 (주입 타당도)</option>
           </select>
         </label>
-        <label id="c-run-wrap">실행 <select id="c-run"></select></label>
+        <label id="c-run-wrap" hidden>실행 <select id="c-run"></select></label>
         <label>코더
           <select id="c-coder"><option value="coder1">코더 1</option><option value="coder2">코더 2</option><option value="final">합의</option></select>
         </label>
@@ -71,24 +62,20 @@
     </section>
 
     <section id="sessions" data-pane="sessions" hidden>
-      <p class="muted">S4 입력은 AI로 보내지 않아 세션 중 위기 신호를 자동으로 감지하지 않습니다. 세션이 끝나면 S4 기록을 확인하고 '확인함'으로 표시하세요.</p>
+      <p class="muted">참가자 화면(<a href="/" target="_blank" rel="noopener">/</a>)을 직접 해 본 시연 기록입니다. 이 연구는 사람 참가자 실험을 하지 않으므로 연구 자료로 쓰지 않습니다. 논문의 시스템 설명·화면 그림용입니다.</p>
       <div class="scroll"><table class="data" id="list"></table></div>
       <div id="detail"></div>
     </section>
 
-    <section id="exports" data-pane="exports" hidden>
+    <section id="settings-tab" data-pane="settings-tab" hidden>
       <div class="panel">
         <h3>내려받기</h3>
-        <p class="lead">위 필터(AI 모드·단계)가 그대로 적용됩니다.</p>
         <div class="actions left">
-          <button type="button" data-dl="/api/admin/export.csv">세션 CSV (한 사람당 한 행)</button>
-          <button type="button" class="secondary" data-dl="/api/admin/validation.csv">실험 전 검증 CSV</button>
+          <button type="button" data-dl="/api/admin/lab/samples.json">샘플 세트 JSON</button>
           <button type="button" class="secondary" data-dl="/api/admin/coding.csv">코딩 결과 CSV</button>
-          <button type="button" class="secondary" data-dl="/api/admin/llm_log.csv">AI 호출 기록</button>
-          <button type="button" class="secondary" data-dl="/api/admin/export.json">전체 기록 JSON</button>
-          <button type="button" class="secondary" id="report">통계 보고서 (HTML)</button>
+          <button type="button" class="secondary" data-dl="/api/admin/export.csv">시연 세션 CSV</button>
         </div>
-        <p class="note">세션 CSV에는 철회·제외 세션도 들어 있습니다(withdraw, excluded 열). 분석할 때 빼 주세요. 보고서는 브라우저에서 열어 PDF로 인쇄할 수 있습니다.</p>
+        <p class="note">실행별 항목 CSV·오류 주입 CSV·원본 JSON·결과 보고서는 결과 탭에서 내려받습니다.</p>
       </div>
       <div class="panel">
         <h3>현재 설정</h3>

@@ -73,24 +73,36 @@ test('조언 아님 → 재질문 → 다시 조언 아님이면 실패 경로 �
   await expect(page.getByText('나에게 하는 말로 바꾸기 어려웠어요')).toBeVisible();
 });
 
-test('연구자 화면: 통계 탭·RQ1 검증 실행·코딩·세션 확인 표시', async ({ page }) => {
+test('연구자 화면: 샘플 만들기 → 실행 → 오류 주입 → 다시 실행 → 결과 → 코딩', async ({ page }) => {
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { name: '연구자 대시보드' })).toBeVisible();
-  await expect(page.locator('#overview .tile').first()).toBeVisible();
-  await page.getByRole('button', { name: 'RQ2 자기적용' }).click();
-  await expect(page.locator('#rq2')).toContainText('S6 판단');
-  await page.getByRole('button', { name: 'RQ1 변환 품질' }).click();
-  await page.getByRole('button', { name: '샘플 검증 실행' }).click();
-  await expect(page.locator('#rq1')).toContainText('자동 점검 성능', { timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: '1. 샘플 조언 세트' })).toBeVisible();
+  await page.getByRole('button', { name: /예시 불러오기/ }).click();
+  await expect(page.locator('#lab')).toContainText('지금 6개');
+  await page.locator('#add-advice').fill('[TEST] 직접 쓴 조언 하나');
+  await page.getByRole('button', { name: '추가', exact: true }).first().click();
+  await expect(page.locator('#lab')).toContainText('지금 7개');
+  await page.getByRole('button', { name: '생성', exact: true }).click();
+  await expect(page.locator('#lab')).toContainText('지금 25개', { timeout: 15_000 });
+  await page.getByRole('button', { name: '실험 실행' }).click();
+  await expect(page.locator('#job-last')).toContainText('실행 완료', { timeout: 20_000 });
+  await page.getByRole('button', { name: 'AI로 오류 문장 만들기' }).click();
+  await expect(page.locator('#lab')).toContainText('오류 주입 세트 (변환 점검 시험용)');
+  await expect(page.locator('#job-last')).toContainText('개 추가', { timeout: 20_000 });
+  await page.getByRole('button', { name: '실험 실행' }).click();
+  await expect(page.locator('#job-last')).toContainText('실행 완료', { timeout: 30_000 });
+
+  await page.getByRole('button', { name: '결과', exact: true }).click();
+  await expect(page.locator('#results-body')).toContainText('RQ2: 부적절한 입력');
+  await expect(page.locator('#results-body')).toContainText('오류 주입 유형별');
+  await expect(page.locator('#results-body')).toContainText('실행 비교');
+
   await page.getByRole('button', { name: '코딩', exact: true }).click();
-  await expect(page.locator('#c-items .code-card')).toHaveCount(3);
-  await page.locator('#c-items .code-card').first().locator('label').filter({ hasText: '오류 없음' }).click();
-  await expect(page.locator('#c-items .code-card').first().locator('.saved')).toHaveText('저장됨');
-  await page.selectOption('#c-sheet', 'reason');
-  await expect(page.locator('#c-items .code-card').first()).toContainText('1차 분류');
-  await page.getByRole('button', { name: '세션', exact: true }).click();
-  await page.locator('#list tr.click').first().click();
-  await page.getByText('S4 기록 확인함').click();
-  await page.getByRole('button', { name: '저장' }).click();
-  await expect(page.locator('.saved').last()).toHaveText('저장됨');
+  const first = page.locator('#c-items .code-card').first();
+  await first.locator('label').filter({ hasText: '비난' }).click();
+  await expect(first.locator('.saved')).toHaveText('저장됨');
+  await page.selectOption('#c-sheet', 'validation');
+  await expect(page.locator('#c-run-wrap')).toBeVisible();
+  const v = page.locator('#c-items .code-card').first();
+  await v.locator('label').filter({ hasText: '강도 강화' }).click();
+  await expect(v.locator('.saved')).toHaveText('저장됨');
 });

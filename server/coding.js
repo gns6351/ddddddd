@@ -1,15 +1,14 @@
 // 코더 판정 저장(코더 1 · 코더 2 · 합의). 시트마다 data/coding/<sheet>.json
-//   validation : 실험 전 샘플 변환문의 오류 유형 (배열, []=오류 없음)
-//   transform  : 참가자 조언 변환문의 오류 유형 (배열)
-//   reason     : S7 이유 범주 확정 (문자열)
-//   edit       : 고쳐 쓴 문장의 변화 유형 (배열, 새 유형 자유 입력 가능)
+//   gold       : 샘플 조언의 정답 라벨 (ok / not_advice / blame / risk)
+//   validation : 실험 실행에서 나온 첫 변환문의 오류 유형 (배열, []=오류 없음)
+//   injected   : 오류 주입 문장의 오류 유형 (배열, 주입 유형을 모른 채 판정 → 주입 타당도)
 // 최종값 = 합의 > 두 코더 일치 > 한 코더만 판정(single) > 없음. 두 코더가 다르면 합의 전까지 비어 있다(conflict).
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { cohenKappa, agreement } from './stats.js';
 
-export const SHEETS = { validation: 'multi', transform: 'multi', reason: 'single', edit: 'multi' };
+export const SHEETS = { gold: 'single', validation: 'multi', injected: 'multi' };
 export const CODERS = ['coder1', 'coder2', 'final'];
 
 const norm = (sheet, v) => (v == null ? null : SHEETS[sheet] === 'multi' ? [...new Set(v)].sort() : v);
