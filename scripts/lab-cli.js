@@ -5,12 +5,14 @@
 //   npm run experiment -- --note "본 실행"                                  본 실행(파일럿 제외 샘플, 1회)
 //   npm run inject -- --limit 10 --samples s1,s2                           오류 주입 세트 만들기(최근 샘플 실행의 점검 통과 문장 기준)
 //   npm run experiment -- --scope injected                                 주입 문장만 점검
+//   npm run check:ai                                                       AI 연결 확인(정답이 분명한 문장 8개)
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadSettings, loadContent, loadPrompt } from '../server/config.js';
 import { createLlm } from '../server/llm.js';
 import { createSafety } from '../server/safety.js';
 import { createLab } from '../server/lab.js';
+import { runAiCheck } from '../server/aicheck.js';
 
 const cmd = process.argv[2];
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
@@ -50,6 +52,13 @@ if (cmd === 'samples') {
   if (!run) { console.error('먼저 npm run experiment로 한 번 실행해 주세요.'); process.exit(1); }
   const r = await lab.inject({ llm, prompt: loadPrompt(settings.contentDir, 'inject', settings.injectPrompt), criteria: c.criteria, run, types: list(arg('types', c.criteria.inject.map((t) => t.id).join(','))), limit: Number(arg('limit', 10)), sampleIds: arg('samples') ? list(arg('samples')) : null, timeoutMs: settings.timeoutMs * 2 });
   console.log(`오류 주입 문장 ${r.added}개를 만들었어요 (실행 ${run.runId} 기준).${r.skipped.length ? ` 건너뜀 ${r.skipped.length}건(조건 없는 문장의 선택·유보 삭제 등)` : ''}${r.failed.length ? ` 실패 ${r.failed.length}건` : ''}`);
+} else if (cmd === 'check') {
+  const P = readJson('validation', 'personas.json');
+  const prompts = Object.fromEntries([['transform', settings.transformPrompt], ['check', settings.checkPrompt], ['persona', settings.personaPrompt], ['inject', settings.injectPrompt]].map(([k, v]) => [k, loadPrompt(settings.contentDir, k, v)]));
+  const r = await runAiCheck({ llm, prompts, character: c.character, criteria: c.criteria, persona: P.personas[0], labelText: P.labels, checkRules: c.study.check, timeoutMs: settings.timeoutMs });
+  for (const x of r.results) console.log(`${x.ok ? '통과' : '실패'}  ${x.label}  [${x.model} → ${x.responseModel || '-'}, ${x.latencyMs ?? '-'}ms]${x.problem ? `\n      ${x.problem}` : ''}${x.output ? `\n      출력: ${x.output}` : ''}`);
+  console.log(`\n${r.passed}/${r.total} 통과${r.llmMode !== 'live' ? ' — 모의(mock) 모드라 실제 AI를 확인한 것이 아니에요. .env에 GEMINI_API_KEY를 넣으세요.' : ''}`);
+  if (r.passed < r.total) process.exitCode = 1;
 } else {
   console.log('사용법: node scripts/lab-cli.js samples|experiment|inject [옵션] (파일 맨 위 설명 참고)');
 }

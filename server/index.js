@@ -12,6 +12,7 @@ import { flattenSession, toCsv } from './export.js';
 import { createCoding, agreementReport, resolve, SHEETS, CODERS } from './coding.js';
 import { createLab } from './lab.js';
 import { computeResults, compareRuns, codingTargets, itemRows, injectedRows } from './results.js';
+import { runAiCheck } from './aicheck.js';
 import fs from 'node:fs/promises';
 
 export function createApp(overrides = {}, deps = {}) {
@@ -169,6 +170,19 @@ export function createApp(overrides = {}, deps = {}) {
       criteria: c.criteria, personas: (await readContentJson('validation', 'personas.json')).personas,
       needsToken: !!settings.adminToken, accessCode: !!settings.accessCode,
     });
+  }));
+
+  // AI 연결 확인: 정답이 분명한 문장으로 변환·점검·생성·주입 모델을 한 번씩 부른다(저장하지 않음)
+  let aiChecking = false;
+  app.post('/api/admin/ai-check', admin(async (req, res) => {
+    if (aiChecking) throw new flow.FlowError('이미 확인하는 중이에요', 409);
+    aiChecking = true;
+    try {
+      const c = content();
+      const P = await readContentJson('validation', 'personas.json');
+      const all = { ...prompts(), persona: loadPrompt(settings.contentDir, 'persona', settings.personaPrompt), inject: loadPrompt(settings.contentDir, 'inject', settings.injectPrompt) };
+      res.json(await runAiCheck({ llm, prompts: all, character: c.character, criteria: c.criteria, persona: P.personas[0], labelText: P.labels, checkRules: c.study.check, timeoutMs: settings.timeoutMs }));
+    } finally { aiChecking = false; }
   }));
 
   // 코딩 기록(대상 목록 반영 후)

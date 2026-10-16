@@ -69,6 +69,12 @@
 
     <section id="settings-tab" data-pane="settings-tab" hidden>
       <div class="panel">
+        <h3>AI 연결 확인</h3>
+        <p class="lead">정답이 분명한 짧은 문장 8개로 변환·점검·생성·주입 모델을 한 번씩 불러 봅니다. 키, 모델 이름, JSON 출력, 시간 제한이 제대로 도는지 보는 점검이며 실험 자료에는 들어가지 않습니다. AI 호출 약 8번이 듭니다.</p>
+        <div class="inline-row"><button type="button" id="ai-check">AI 연결 확인</button><span class="muted" id="ai-check-msg"></span></div>
+        <div id="ai-check-out"></div>
+      </div>
+      <div class="panel">
         <h3>내려받기</h3>
         <div class="actions left">
           <button type="button" data-dl="/api/admin/lab/samples.json">샘플 세트 JSON</button>

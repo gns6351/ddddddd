@@ -273,3 +273,19 @@ test('코딩 "변환 오류" 시트의 기본 실행은 가장 최근 샘플 실
     assert.deepEqual(r.runs.map((x) => x.runId), [runId]);
   } finally { await t.close(); }
 });
+
+test('AI 연결 확인: 8개 항목을 실제 호출 경로로 부르고, 실패하면 이유를 알려 줌', async () => {
+  let t = await boot();
+  try {
+    const r = (await t.post('/api/admin/ai-check', {})).body;
+    assert.deepEqual([r.passed, r.total, r.llmMode], [8, 8, 'mock']);
+  } finally { await t.close(); }
+  const broken = { models: { async generateContent() { throw Object.assign(new Error('models/x is not found'), { status: 404 }); } } };
+  t = await boot({ llmModeEnv: 'live', apiKey: 'k', model: 'x' }, { geminiClient: broken });
+  try {
+    const r = (await t.post('/api/admin/ai-check', {})).body;
+    assert.equal(r.passed, 0);
+    assert.equal(r.results[0].model, 'x');
+    assert.match(r.results[0].problem, /모델 이름을 찾을 수 없어요/);
+  } finally { await t.close(); }
+});

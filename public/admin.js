@@ -139,6 +139,7 @@ function renderLab() {
   const S = L.samples;
   const warn = [];
   if (meta.llmMode !== 'live') warn.push('지금은 모의(mock) 모드라 생성·변환·점검 결과가 가짜예요. 실제 실험은 .env에 GEMINI_API_KEY를 넣고 하세요.');
+  else warn.push('실험 전에 "설정·내보내기" 탭의 "AI 연결 확인"으로 세 모델이 제대로 응답하는지 먼저 보세요.');
   if (meta.sameCheckModel) warn.push(`변환과 점검에 같은 모델(${meta.model})을 써요. CHECK_MODEL로 다른 모델을 권장해요.`);
   if (meta.sameGenModel) warn.push(`샘플 생성 모델(${meta.genModel})이 변환·점검 모델과 같아요. GEN_MODEL로 다른 모델을 권장해요.`);
 
@@ -551,6 +552,21 @@ async function saveReport() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// AI 연결 확인
+$('ai-check').addEventListener('click', async () => {
+  const b = $('ai-check');
+  b.disabled = true;
+  say($('ai-check-msg'), '확인하는 중… (최대 1~2분)');
+  try {
+    const r = await post('/api/admin/ai-check');
+    say($('ai-check-msg'), `${r.passed}/${r.total} 통과 · ${new Date(r.at).toLocaleTimeString('ko-KR')}${r.llmMode !== 'live' ? ' · 모의(mock) 모드라 실제 AI를 확인한 것이 아니에요' : ''}`);
+    $('ai-check-out').replaceChildren(table(['결과', '확인 항목', '모델 → 응답 모델', '응답 시간', '출력 / 문제'], r.results.map((x) => [
+      h('span', { class: `badge${x.ok ? '' : ' warn'}` }, x.ok ? '통과' : '실패'), x.label, `${x.model || '—'} → ${x.responseModel || '—'}`, x.latencyMs != null ? `${(x.latencyMs / 1000).toFixed(2)}초` : '—',
+      x.problem ? h('div', {}, h('b', {}, x.problem), x.output ? h('div', { class: 'muted' }, x.output) : '') : x.output || '',
+    ])));
+  } catch (e) { say($('ai-check-msg'), e.message); } finally { b.disabled = false; }
+});
 
 $('load').addEventListener('click', () => { meta = null; load(); });
 $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') { meta = null; load(); } });

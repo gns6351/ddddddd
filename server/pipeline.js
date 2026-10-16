@@ -45,7 +45,7 @@ const errCode = (err) => (err?.name === 'AbortError' || /timed? ?out|timeout|abo
 export function createAsker(llm, timeoutMs, calls) {
   return async function ask(kind, prompt, vars, { attempt = 1, judge, mockInput }) {
     const t0 = Date.now();
-    const base = { kind, attempt, at: new Date(t0).toISOString(), llmMode: llm.mode, prompt: `${prompt.ref}@${prompt.hash}` };
+    const base = { kind, attempt, at: new Date(t0).toISOString(), llmMode: llm.mode, model: llm.modelFor?.(kind) ?? null, prompt: `${prompt.ref}@${prompt.hash}` };
     try {
       const { raw, meta } = await withTimeout((signal) => llm.call(kind, { promptText: renderPrompt(prompt, vars), schema: prompt.schema, temperature: prompt.temperature, mockInput, attempt, signal }), timeoutMs);
       const j = judge(raw);

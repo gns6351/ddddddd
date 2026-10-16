@@ -147,5 +147,6 @@ export function createLlm(settings, { client } = {}) {
     genModel: settings.genModel,
     get thinking() { return thinking || null; },
     call,
+    modelFor: (kind) => (live ? modelFor(kind) : 'mock'),
   };
 }

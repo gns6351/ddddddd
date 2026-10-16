@@ -17,7 +17,8 @@
     "faces": "node scripts/make-faces.js",
     "samples": "node scripts/lab-cli.js samples",
     "inject": "node scripts/lab-cli.js inject",
-    "experiment": "node scripts/lab-cli.js experiment"
+    "experiment": "node scripts/lab-cli.js experiment",
+    "check:ai": "node scripts/lab-cli.js check"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",
