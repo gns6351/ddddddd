@@ -32,6 +32,16 @@ export function loadSettings(overrides = {}) {
     checkPrompt: env.CHECK_PROMPT || 'v2',
     personaPrompt: env.PERSONA_PROMPT || 'v1',
     injectPrompt: env.INJECT_PROMPT || 'v1',
+    // ---- 거울상담소 게임(/api/game) ----
+    // 게임 모델: 손님 생성·손님 턴·조언 판정·자기 지향 변환·위험 판정. 비우면 GEMINI_MODEL
+    gameModel: env.GAME_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    // 게임 변환 점검 모델. 비우면 CHECK_MODEL
+    gameCheckModel: env.GAME_CHECK_MODEL || env.CHECK_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    // 테스트용 플레이어 페르소나 모델(손님과 분리). 비우면 GEN_MODEL
+    simModel: env.SIM_MODEL || env.GEN_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    // 게임 AI 호출 1회 시간 제한(ms). NFR-01: 일반 턴 p95 10초, 거울 장면 p95 20초
+    gameTimeoutMs: Number(env.GAME_TIMEOUT_MS || 9000),
+    gamePromptVersion: env.GAME_PROMPT_VERSION || 'v1',
     // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)
     phase: oneOf(env.STUDY_PHASE, ['pilot', 'main'], 'pilot'),
     // 연구자 화면 비밀번호. 비워 두면 서버 PC(localhost)에서만 비밀번호 없이 열림
@@ -41,6 +51,7 @@ export function loadSettings(overrides = {}) {
     llmModeEnv: oneOf(env.LLM_MODE, ['live', 'mock'], ''),
     ...overrides,
   };
+  s.kindModels = { g_guest: s.gameModel, g_turn: s.gameModel, g_judge: s.gameModel, g_mirror: s.gameModel, g_risk: s.gameModel, g_check: s.gameCheckModel, g_player: s.simModel, ...(s.kindModels || {}) };
   s.llmMode = s.llmModeEnv === 'live' || (s.llmModeEnv !== 'mock' && s.apiKey) ? 'live' : 'mock';
   return s;
 }

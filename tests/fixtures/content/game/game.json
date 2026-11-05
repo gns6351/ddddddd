@@ -1,0 +1,97 @@
+{
+  "version": "game-v1-draft",
+  "_note": "거울상담소 게임 설정. 중간보고서 FR-01~12·NFR-01~08 기준. 고치면 서버 재시작 없이 다음 요청부터 반영된다. [미정] 표시는 제작자가 정할 값. limits.mirror_reserve = 상담 중에는 쓰지 않고 거울 장면(변환·점검 최대 4회)용으로 남겨 두는 호출 수.",
+  "consent": {
+    "title": "거울상담소 시작 전 안내",
+    "items": [
+      {
+        "id": "purpose",
+        "label": "수집 목적",
+        "text": "입력한 걱정과 대화는 손님을 만들고 대화를 이어 가는 데에만 씁니다."
+      },
+      {
+        "id": "external_ai",
+        "label": "외부 AI 전송",
+        "text": "걱정과 대화 문장은 응답을 만들기 위해 외부 AI 서비스(Google Gemini)로 전송됩니다."
+      },
+      {
+        "id": "retention",
+        "label": "보관 기간",
+        "text": "대화 저장에 동의하면 [미정] 30일 동안 보관하고, 동의하지 않으면 한 판이 끝나면 서버에 남기지 않습니다."
+      },
+      {
+        "id": "deletion",
+        "label": "삭제 방법",
+        "text": "언제든 '그만하기' 또는 기록 화면의 '삭제'로 세션과 카드를 모두 지울 수 있습니다."
+      }
+    ],
+    "store_label": "대화와 돌아온 말 카드를 저장할게요 (선택)"
+  },
+  "worry": {
+    "min": 5,
+    "max": 300
+  },
+  "utterance": {
+    "min": 1,
+    "max": 300
+  },
+  "edit": {
+    "min": 1,
+    "max": 300
+  },
+  "examples": [
+    {
+      "id": "exam",
+      "topic": "시험",
+      "text": "열심히 준비한 시험을 망쳐서, 뭘 해도 안 될 것 같은 기분이 들어요."
+    },
+    {
+      "id": "team",
+      "topic": "팀플",
+      "text": "팀플에서 저만 일을 다 떠맡는 것 같은데, 말을 꺼내면 분위기가 나빠질까 봐 아무 말도 못 하고 있어요."
+    },
+    {
+      "id": "job",
+      "topic": "취업",
+      "text": "지원서를 계속 넣는데 다 떨어져서, 나만 뒤처지는 것 같아 불안해요."
+    }
+  ],
+  "turns": {
+    "recommended": [
+      6,
+      8
+    ],
+    "max": 12,
+    "advice_turns": [
+      3,
+      6
+    ],
+    "extra_advice_turn": 8,
+    "suggest_end_from": 6
+  },
+  "limits": {
+    "calls_per_game": 60,
+    "mirror_reserve": 4,
+    "guest_rerolls": 1,
+    "memory_ttl_minutes": 120
+  },
+  "banned_words": [
+    "치료",
+    "효과",
+    "진행률"
+  ],
+  "help": {
+    "title": "지금은 상담 놀이를 멈출게요",
+    "lines": [
+      "힘든 마음이 느껴져요. 혼자 견디지 않아도 괜찮아요.",
+      "자살예방상담전화 109 (24시간)",
+      "정신건강위기상담전화 1577-0199 (24시간)",
+      "긴급한 상황이면 112 또는 119"
+    ]
+  },
+  "check": {
+    "maxLengthRatio": 2.5,
+    "shortAdviceChars": 25,
+    "shortExtraChars": 45
+  }
+}

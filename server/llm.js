@@ -88,7 +88,8 @@ function mockInject({ self, type }) {
   return JSON.stringify({ self: `${self}${add[type] || ''}` });
 }
 
-export function createLlm(settings, { client } = {}) {
+// mocks: 다른 모듈(게임)이 추가하는 호출 종류의 모의 응답. settings.kindModels: 호출 종류별 모델
+export function createLlm(settings, { client, mocks = {} } = {}) {
   const live = settings.llmMode === 'live';
   let aiPromise = null;
   let thinking = settings.thinking ? String(settings.thinking).toUpperCase() : '';
@@ -121,8 +122,8 @@ export function createLlm(settings, { client } = {}) {
   }
 
   // 한 번 호출 → { raw, meta }. kind = transform | check | generate | inject. mockInput = 모의 응답을 만들 입력
-  const MOCKS = { transform: (x) => mockTransform(x), check: (x, a) => mockCheck(x, a), generate: (x) => mockGenerate(x), inject: (x) => mockInject(x) };
-  const modelFor = (kind) => ({ check: settings.checkModel, generate: settings.genModel, inject: settings.genModel }[kind] || settings.model);
+  const MOCKS = { transform: (x) => mockTransform(x), check: (x, a) => mockCheck(x, a), generate: (x) => mockGenerate(x), inject: (x) => mockInject(x), ...mocks };
+  const modelFor = (kind) => settings.kindModels?.[kind] || ({ check: settings.checkModel, generate: settings.genModel, inject: settings.genModel }[kind]) || settings.model;
   async function call(kind, { promptText, schema, temperature, mockInput, attempt = 1, signal }) {
     const model = modelFor(kind);
     if (!live) return { raw: MOCKS[kind](mockInput, attempt), meta: { model: 'mock', responseModel: 'mock' } };

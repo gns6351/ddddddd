@@ -1,0 +1,11 @@
+{
+  "_status": "[초안] 손님 생성이 두 번 실패했을 때 쓰는 예시 손님 3명(FR-03). 가상 인물이며 제작자가 검토한다.",
+  "guests": [
+    { "id": "exam", "topic": "시험", "name": "윤서", "age": "21살", "role": "대학교 2학년", "background": "전공 수업을 따라가려고 늘 열심히 하지만, 결과가 기대에 못 미칠 때가 많다.", "situation": "중간고사를 몇 주 동안 준비했는데 점수가 낮게 나왔다.", "core_conflict": "노력했는데도 결과가 나빠서 스스로를 안 되는 사람이라고 느낀다.", "automatic_thought": "나는 뭘 해도 결국 안 되는 사람인가 봐.", "opening": "저… 이번 시험 진짜 열심히 준비했거든요. 근데 또 망쳤어요. 이제 뭘 해도 안 될 것 같아요.",
+      "choices": [ { "text": "많이 속상했겠어요. 그만큼 열심히 했으니까요.", "attitude": "empathy" }, { "text": "어떤 부분이 제일 아쉬웠어요?", "attitude": "specify" }, { "text": "'뭘 해도 안 된다'는 생각은 언제부터 들었어요?", "attitude": "explore" } ] },
+    { "id": "team", "topic": "팀플", "name": "도현", "age": "22살", "role": "대학교 3학년", "background": "갈등을 피하려고 불편한 말을 잘 꺼내지 못한다.", "situation": "조별 과제에서 자료 조사와 발표 준비를 혼자 거의 다 맡고 있다.", "core_conflict": "부당하다고 느끼지만 말을 꺼내면 관계가 나빠질까 봐 참고 있다.", "automatic_thought": "내가 말하면 다들 나를 싫어할 거야.", "opening": "조별 과제를 하는데요, 제가 거의 다 하고 있어요. 근데 말하면 분위기만 나빠질 것 같아서요.",
+      "choices": [ { "text": "혼자 다 하느라 많이 지쳤겠어요.", "attitude": "empathy" }, { "text": "지금 어떤 일들을 맡고 있어요?", "attitude": "specify" }, { "text": "말을 꺼냈을 때 어떤 일이 생길 것 같아요?", "attitude": "explore" } ] },
+    { "id": "job", "topic": "취업", "name": "지안", "age": "25살", "role": "졸업 예정자", "background": "주변 친구들이 하나둘 합격 소식을 전하고 있다.", "situation": "지원서를 여러 곳에 냈지만 계속 서류에서 떨어지고 있다.", "core_conflict": "계속된 탈락으로 자신만 뒤처진다고 느끼며 불안하다.", "automatic_thought": "나만 제자리야. 아무도 나를 안 뽑을 거야.", "opening": "또 떨어졌어요. 친구들은 다 붙는 것 같은데 저만 제자리인 것 같아요.",
+      "choices": [ { "text": "계속 떨어지면 정말 불안할 것 같아요.", "attitude": "empathy" }, { "text": "몇 군데 정도 지원했어요?", "attitude": "specify" }, { "text": "'아무도 안 뽑을 거야'라는 생각이 들 때 어떤 근거가 떠올라요?", "attitude": "explore" } ] }
+  ]
+}

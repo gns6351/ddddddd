@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "reply": { "type": "string" },
+    "choices": { "type": "array", "items": { "type": "object", "properties": { "text": { "type": "string" }, "attitude": { "type": "string", "enum": ["empathy", "specify", "explore"] } }, "required": ["text", "attitude"] } },
+    "facts": { "type": "array", "items": { "type": "string" } },
+    "player_risk": { "type": "boolean" }
+  },
+  "required": ["reply", "choices", "facts", "player_risk"]
+}

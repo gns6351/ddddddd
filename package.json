@@ -18,7 +18,10 @@
     "samples": "node scripts/lab-cli.js samples",
     "inject": "node scripts/lab-cli.js inject",
     "experiment": "node scripts/lab-cli.js experiment",
-    "check:ai": "node scripts/lab-cli.js check"
+    "check:ai": "node scripts/lab-cli.js check",
+    "game:sim": "node scripts/game-cli.js sim",
+    "game:risk": "node scripts/game-cli.js risk",
+    "game:report": "node scripts/game-cli.js report"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

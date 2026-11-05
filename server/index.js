@@ -14,11 +14,13 @@ import { createLab } from './lab.js';
 import { computeResults, compareRuns, codingTargets, itemRows, injectedRows } from './results.js';
 import { runAiCheck } from './aicheck.js';
 import fs from 'node:fs/promises';
+import { createGameRouter } from './game/router.js';
+import { GAME_MOCKS } from './game/mocks.js';
 
 export function createApp(overrides = {}, deps = {}) {
   const settings = loadSettings(overrides);
   const store = createStore(settings.dataDir);
-  const llm = deps.llm || createLlm(settings, { client: deps.geminiClient });
+  const llm = deps.llm || createLlm(settings, { client: deps.geminiClient, mocks: GAME_MOCKS });
   const coding = createCoding(settings.dataDir);
   const lab = createLab(settings.dataDir);
   const busy = new Set();
@@ -369,6 +371,10 @@ export function createApp(overrides = {}, deps = {}) {
   app.get('/api/admin/export.csv', admin(async (req, res) => csv(res, 'sessions', (await filtered(req.query)).map((s) => flattenSession(s)))));
   app.get('/api/admin/export.json', admin(async (req, res) => res.attachment(`sessions-${stamp()}.json`).json(await filtered(req.query))));
 
+  // ---- 거울상담소 게임 API (논문용 API와 분리, NFR-08) ----
+  const gameRouter = createGameRouter({ settings, llm });
+  app.use('/api/game', gameRouter);
+
   app.use('/api', (req, res) => res.status(404).json({ error: '없는 API예요' }));
 
   // eslint-disable-next-line no-unused-vars
@@ -381,6 +387,6 @@ export function createApp(overrides = {}, deps = {}) {
     res.status(status).json(body);
   });
 
-  app.locals.study = { settings, store, llm };
+  app.locals.study = { settings, store, llm, gameStore: gameRouter.locals.store };
   return app;
 }
