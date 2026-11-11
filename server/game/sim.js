@@ -7,7 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createAsker } from '../pipeline.js';
 import { quantile } from '../stats.js';
-import { judgePlayer } from './judges.js';
+import { judgePlayer, judgeContext } from './judges.js';
 import { createGameAi } from './engine.js';
 import { createGameSafety } from './safety.js';
 import { loadGameContent, loadGamePrompts, loadSimContent, loadRiskCases } from './content.js';
@@ -43,15 +43,16 @@ export async function runSimulation({ base, llm, settings, contentDir, games = 3
     const playerCalls = [];
     const ask = createAsker(llm, settings.gameTimeoutMs * 2, playerCalls);
     const askPlayer = (task, view, step) => ask('g_player', prompts.player, { persona: `${persona.label}: ${persona.desc}`, task, state: view ? stateText(view) : '(아직 게임 시작 전)' }, { judge: judgePlayer, mockInput: { persona, view: view?.turn, step } });
-    const g = { n: i + 1, persona: persona.id, risk: !!persona.risk, topic, errors: [], turnMs: [], mirrorMs: null, textInputs: 0, retries: 0 };
+    const g = { n: i + 1, persona: persona.id, risk: !!persona.risk, topic, errors: [], turnMs: [], mirrorMs: null, textInputs: 0, requiredTextInputs: 0, retries: 0 };
+    const playerId = `sim-${persona.id}-${i + 1}`;
+    const H = { 'x-player-id': playerId };
     const post = async (p, body) => {
-      let r = await http('POST', p, { requestId: rid(), ...body });
-      if (r.status === 503 && r.body.retryable) { g.retries += 1; r = await http('POST', p, { requestId: rid(), ...body }); } // FR-12 재시도
+      let r = await http('POST', p, { requestId: rid(), ...body }, H);
+      if (r.status === 503 && r.body.retryable) { g.retries += 1; r = await http('POST', p, { requestId: rid(), ...body }, H); } // FR-12 재시도
       if (r.status >= 400) g.errors.push(`${p.split('/').pop()}:${r.status}:${r.body.code || r.body.error}`);
       return r;
     };
     try {
-      const playerId = `sim-${persona.id}-${i + 1}`;
       let r = await post('/api/game/sessions', { playerId, consent: true, store: false });
       const id = r.body.id;
       const w = await askPlayer(`'${topic}'에 관한 내 걱정을 게임에 5~300자로 적는다. action은 text.`, null, 0);
@@ -69,7 +70,8 @@ export async function runSimulation({ base, llm, settings, contentDir, games = 3
         else if (a.action === 'choice' && v.turn.input !== 'text' && v.turn.choices.length) body = { choiceId: v.turn.choices[Math.min(Math.max(a.choice, 0), v.turn.choices.length - 1)].id };
         else body = { text: (a.text || '음… 잘 모르겠어요.').slice(0, 300) };
         if (body.text) g.textInputs += 1;
-        r = await post(`/api/game/sessions/${id}/turn`, body);
+        if (v.turn.input === 'text') g.requiredTextInputs += 1; // 조언 요청 턴(입력창만) — FR-05: 한 판 3회 이하
+        r = await post(`/api/game/sessions/${id}/turn`, { turn: v.turn.n, ...body });
         g.turnMs.push(r.ms);
         if (r.status >= 400) break;
         v = r.body;
@@ -87,6 +89,13 @@ export async function runSimulation({ base, llm, settings, contentDir, games = 3
         v = r.body;
       }
       const raw = gameStore ? await gameStore.get(id) : null;
+      // 맥락 유지(FR-04): 끝난 대화를 다시 읽어 손님이 앞의 말·플레이어의 정정과 어긋났는지 판정
+      const tr = v.transcript || [];
+      if (tr.length >= 2) {
+        const c = await ask('g_context', prompts.context, { facts: (raw?.facts || []).map((f) => `- ${f}`).join('\n') || '(기록 없음)', transcript: tr.map((t) => `${t.n}턴 손님: ${t.guest}\n${t.n}턴 플레이어: ${t.player.text}`).join('\n') }, { judge: judgeContext, mockInput: {} });
+        g.context = c.error ? null : c.consistent;
+        g.contextNote = c.error ? `판정 실패: ${c.error}` : c.note;
+      } else g.context = null;
       Object.assign(g, {
         sessionId: id, stage: v.stage, endReason: v.endReason || raw?.endReason || null, help: v.stage === 'help',
         completed: v.stage === 'done' && !g.errors.length, turns: (v.transcript || []).length, highlights: (v.highlights || []).length,
@@ -117,8 +126,10 @@ export function summarizeSim(games) {
     riskPersonas: { n: risky.length, help: risky.filter((g) => g.help).length }, // FR-10 중단이 정상 동작
     unexpectedHelp: normal.filter((g) => g.help).map((g) => g.n),
     avgTurns: games.length ? +(games.reduce((s, g) => s + (g.turns || 0), 0) / games.length).toFixed(1) : null,
+    requiredTextMax: games.length ? Math.max(...games.map((g) => g.requiredTextInputs)) : null, // FR-05: 3 이하여야 함
     avgTextInputs: games.length ? +(games.reduce((s, g) => s + g.textInputs, 0) / games.length).toFixed(1) : null,
     highlightRate: normal.length ? normal.filter((g) => g.highlights > 0).length / normal.length : null,
+    context: { judged: games.filter((g) => g.context != null).length, kept: games.filter((g) => g.context === true).length, broken: games.filter((g) => g.context === false).map((g) => ({ n: g.n, persona: g.persona, note: g.contextNote })) }, // FR-04 맥락 유지
     turnLatencyP95: p95(turnMs), mirrorLatencyP95: p95(mirrorMs), targets: { turnP95: 10000, mirrorP95: 20000 }, // NFR-01
     callsMax: calls.length ? Math.max(...calls) : null, callsAvg: calls.length ? +(calls.reduce((a, b) => a + b, 0) / calls.length).toFixed(1) : null, callsTarget: 60, // NFR-08
     mirrorOriginalOnly: games.filter((g) => g.mirrorShown === 'original_only').length,

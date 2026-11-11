@@ -38,17 +38,22 @@ export function createGameAi({ llm, settings, log }) {
   }
 
   // 손님 생성: 형식 검사 실패·AI 오류면 1회 재시도, 또 실패하면 예시 손님 (FR-03)
-  async function makeGuest(session, { prompts, safety, cap, examples }, worry, exampleId) {
+  async function makeGuest(session, { prompts, safety, cap, examples }, worry, exampleId, previous = null) {
     const ask = asker(session, cap);
     const judge = makeJudgeGuest(safety);
     const errors = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
-      const r = await ask('g_guest', prompts.guest, { worry }, { attempt, judge, mockInput: { worry, attempt } });
+      // 다시 만들기면 이전 손님과 이름·배경이 달라야 한다
+      const avoid = previous ? `이전에 만든 손님(이름 ${previous.name}, ${previous.role})과 이름·나이·배경이 다른 새 손님을 만든다.` : '(없음)';
+      const r = await ask('g_guest', prompts.guest, { worry, avoid }, { attempt, judge, mockInput: { worry, attempt, previous: previous?.name || null } });
+      if (!r.error && previous && r.card.name === previous.name) { errors.push('SAME_GUEST'); continue; }
       if (!r.error) return { source: 'ai', card: r.card, choices: r.choices, attempts: attempt, errors };
       errors.push(r.error);
       if (r.error === 'CALL_CAP') break;
     }
-    const ex = examples.find((g) => g.id === (exampleId || guessTopic(worry))) || examples[0];
+    // 예시 손님: 주제에 맞는 손님. 다시 만들기인데 그 손님이 이전 손님이면 다른 예시 손님
+    const wanted = examples.find((g) => g.id === (exampleId || guessTopic(worry))) || examples[0];
+    const ex = previous && wanted.name === previous.name ? examples.find((g) => g.name !== previous.name) || wanted : wanted;
     const { id, topic, choices, ...card } = ex;
     return { source: 'example', exampleId: id, card, choices, attempts: errors.length, errors };
   }
@@ -85,21 +90,32 @@ export function createGameAi({ llm, settings, log }) {
 
   // 거울 장면: 변환 → 형식·의미 점검 → 실패하면 1회 재변환 → 또 실패하면 원문만 (FR-08, NFR-03)
   async function mirror(session, { prompts, safety, capMirror, checkRules }, highlight) {
-    const ask = asker(session, capMirror, settings.gameTimeoutMs);
+    const ask = asker(session, capMirror, settings.gameMirrorTimeoutMs); // 최대 4회 호출이 20초 안에 끝나도록(NFR-01)
     const advice = highlight.text;
     const checks = [];
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const t = await ask('g_mirror', prompts.mirror, {
         situation: session.guest.card.situation, guest_before: highlight.guestBefore || '(없음)', advice, guest_after: highlight.guestAfter || '(없음)',
       }, { attempt, judge: judgeMirror, mockInput: { advice, attempt } });
-      if (t.error) { checks.push({ attempt, result: 'transform_error', error: t.error }); if (t.error === 'CALL_CAP') break; continue; }
+      if (t.error) {
+        checks.push({ attempt, result: 'transform_error', error: t.error });
+        if (t.error === 'CALL_CAP') break;
+        if (!isOutputError(t.error)) return { error: t.error, checks }; // 통신 오류·시간 초과 → 재시도 안내(FR-12)
+        continue;
+      }
       const format = formatCheck(advice, t.self, checkRules);
       const banned = safety.banned(t.self, advice);
       const check = { attempt, self: t.self, format: format.errors, banned, meaning: null, result: null };
       checks.push(check);
       if (!format.pass || banned.length) { check.result = 'format_fail'; continue; }
       const m = await ask('g_check', prompts.check, { advice, self: t.self }, { attempt, judge: judgeCheck, mockInput: `${advice}\n${t.self}` });
-      if (m.error) { check.result = 'check_error'; check.error = m.error; if (m.error === 'CALL_CAP') break; continue; }
+      if (m.error) {
+        check.result = 'check_error';
+        check.error = m.error;
+        if (m.error === 'CALL_CAP') break;
+        if (!isOutputError(m.error)) return { error: m.error, checks };
+        continue;
+      }
       check.meaning = { reversal: m.reversal, addition: m.addition, forcing: m.forcing };
       check.result = m.reversal || m.addition || m.forcing ? 'meaning_fail' : 'pass';
       if (check.result === 'pass') return { self: t.self, shown: 'self', checks };

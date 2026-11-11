@@ -41,6 +41,8 @@ export function loadSettings(overrides = {}) {
     simModel: env.SIM_MODEL || env.GEN_MODEL || env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
     // 게임 AI 호출 1회 시간 제한(ms). NFR-01: 일반 턴 p95 10초, 거울 장면 p95 20초
     gameTimeoutMs: Number(env.GAME_TIMEOUT_MS || 9000),
+    // 거울 장면(변환·점검, 최대 4회) 호출 1회 시간 제한(ms). 4회 × 5초 = 20초
+    gameMirrorTimeoutMs: Number(env.GAME_MIRROR_TIMEOUT_MS || 5000),
     gamePromptVersion: env.GAME_PROMPT_VERSION || 'v1',
     // 새 세션에 붙는 단계 표시. 파일럿 자료는 본 분석에서 뺀다(대시보드에서 세션별로 바꿀 수 있음)
     phase: oneOf(env.STUDY_PHASE, ['pilot', 'main'], 'pilot'),
@@ -51,7 +53,7 @@ export function loadSettings(overrides = {}) {
     llmModeEnv: oneOf(env.LLM_MODE, ['live', 'mock'], ''),
     ...overrides,
   };
-  s.kindModels = { g_guest: s.gameModel, g_turn: s.gameModel, g_judge: s.gameModel, g_mirror: s.gameModel, g_risk: s.gameModel, g_check: s.gameCheckModel, g_player: s.simModel, ...(s.kindModels || {}) };
+  s.kindModels = { g_guest: s.gameModel, g_turn: s.gameModel, g_judge: s.gameModel, g_mirror: s.gameModel, g_risk: s.gameModel, g_check: s.gameCheckModel, g_player: s.simModel, g_context: s.simModel, ...(s.kindModels || {}) };
   s.llmMode = s.llmModeEnv === 'live' || (s.llmModeEnv !== 'mock' && s.apiKey) ? 'live' : 'mock';
   return s;
 }

@@ -1,6 +1,6 @@
 # 거울상담소 게임 서버 (중간보고서 FR-01~12 · NFR-01~08)
 
-내 걱정을 닮은 AI 손님을 상담하고, 손님에게 건넨 조언을 나에게 돌려받는 모바일 자기성찰 게임의 서버와 AI 부분입니다. Android 앱(React Native·Expo)은 이 서버의 게임 API(`/api/game`)만 부릅니다. API 문서는 [docs/game-api.md](docs/game-api.md)에 있습니다.
+내 걱정을 닮은 AI 손님을 상담하고, 손님에게 건넨 조언을 나에게 돌려받는 모바일 자기성찰 게임의 서버와 AI 부분입니다. Android 앱(React Native·Expo)은 이 서버의 게임 API(`/api/game`)만 부릅니다. API 문서는 [docs/game-api.md](docs/game-api.md), 요구사항별 구현·검증 상태는 [docs/game-requirements.md](docs/game-requirements.md)에 있습니다.
 
 | AI 작업 | 요구사항 | 구현 |
 |---|---|---|
@@ -26,13 +26,13 @@ npm start                 # http://localhost:3000/api/game
 ## 테스트 (중간보고서 4-2절)
 
 ```
-npm test                              # 자동 테스트: 게임 API 17개(FR-01~12, NFR-01·02·03·04·05·08) + 기존 회귀 테스트
+npm test                              # 자동 테스트: 게임 API 25개(FR-01~12, NFR-01·02·03·04·05·08) + 기존 회귀 테스트 31개
 npm run game:sim -- --games 30        # AI 페르소나 시뮬레이션: 성향 10종 × 걱정 주제(시험·팀플·취업·관계)
 npm run game:risk                     # 위험 발화 사례 40개(직접 20·간접 20) + 대조 20개 (NFR-05)
 npm run game:report                   # 일반 로그 집계: 판당 호출·토큰·실패 사유·종류별 응답 시간 p95 (NFR-08)
 ```
 
-- 시뮬레이션 결과는 `data/game/reports/sim-<시각>/`에 남습니다. `report.json`(완주율·턴·서술형 입력·위험 감지·응답 시간 p95·판당 호출), `games.csv`, `guests.csv`(FR-03 제작자 2인 판정용: 걱정·손님 카드·핵심 갈등, rater1·rater2·consensus 칸)가 들어 있습니다.
+- 시뮬레이션 결과는 `data/game/reports/sim-<시각>/`에 남습니다. `report.json`(완주율·턴·서술형 입력·맥락 유지·위험 감지·응답 시간 p95·판당 호출), `games.csv`, `guests.csv`(FR-03 제작자 2인 판정용: 걱정·손님 카드·핵심 갈등, rater1·rater2·consensus 칸)가 들어 있습니다.
 - 위험 성향 페르소나는 중단이 정상 동작이라 완주율 분모에서 뺍니다(NFR-06).
 - 모의 모드(키 없음)에서는 흐름만 확인되고 수치는 의미가 없습니다. 특히 간접 위험 표현 감지와 응답 시간은 실제 Gemini로 돌려야 확인됩니다.
 - 모의 응답 태그로 경로를 시험할 수 있습니다(`server/game/mocks.js` 맨 위 설명).

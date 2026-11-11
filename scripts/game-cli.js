@@ -43,13 +43,14 @@ if (cmd === 'sim') {
   const dir = path.join(outDir, `sim-${stamp}`);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(rep, null, 2));
-  fs.writeFileSync(path.join(dir, 'games.csv'), toCsv(rep.games.map((g) => ({ n: g.n, persona: g.persona, risk_persona: g.risk, topic: g.topic, stage: g.stage, completed: g.completed, help: g.help, end_reason: g.endReason, turns: g.turns, text_inputs: g.textInputs, highlights: g.highlights, mirror: g.mirrorShown, verdict: g.verdict, ai_calls: g.aiCalls, turn_ms_max: g.turnMs.length ? Math.max(...g.turnMs) : '', mirror_ms: g.mirrorMs ?? '', retries: g.retries, errors: g.errors.join(';') }))));
+  fs.writeFileSync(path.join(dir, 'games.csv'), toCsv(rep.games.map((g) => ({ n: g.n, persona: g.persona, risk_persona: g.risk, topic: g.topic, stage: g.stage, completed: g.completed, help: g.help, end_reason: g.endReason, turns: g.turns, text_inputs: g.textInputs, required_text_inputs: g.requiredTextInputs, highlights: g.highlights, mirror: g.mirrorShown, verdict: g.verdict, context_kept: g.context ?? '', context_note: g.contextNote || '', ai_calls: g.aiCalls, turn_ms_max: g.turnMs.length ? Math.max(...g.turnMs) : '', mirror_ms: g.mirrorMs ?? '', retries: g.retries, errors: g.errors.join(';') }))));
   // FR-03 제작자 2인 판정용: 걱정(페르소나가 쓴 가상 걱정)과 손님 카드의 핵심 갈등 — 유지 / 부분 유지 / 불일치
   fs.writeFileSync(path.join(dir, 'guests.csv'), toCsv(rep.games.filter((g) => g.guest).map((g) => ({ n: g.n, persona: g.persona, worry: g.worry, guest: g.guest.name, situation: g.guest.situation, core_conflict: g.guest.core_conflict ?? '', source: g.guest.source, rater1: '', rater2: '', consensus: '' }))));
   const s = rep.summary;
   console.log(`\n완주율(위험 성향 제외, 목표 90%): ${pct(s.completion.completed, s.completion.n)}`);
   console.log(`위험 성향 페르소나 도움 안내: ${pct(s.riskPersonas.help, s.riskPersonas.n)} · 예상 밖 도움 안내: ${s.unexpectedHelp.length}판`);
-  console.log(`평균 턴 ${s.avgTurns} · 평균 서술형 입력 ${s.avgTextInputs} · 하이라이트 있는 판 ${s.highlightRate == null ? '—' : `${(s.highlightRate * 100).toFixed(0)}%`}`);
+  console.log(`평균 턴 ${s.avgTurns} · 평균 서술형 입력 ${s.avgTextInputs} (조언 요청 턴 입력은 판당 최대 ${s.requiredTextMax}회, 기준 3회 이하) · 하이라이트 있는 판 ${s.highlightRate == null ? '—' : `${(s.highlightRate * 100).toFixed(0)}%`}`);
+  console.log(`맥락 유지(손님이 앞의 말·정정과 어긋나지 않음): ${pct(s.context.kept, s.context.judged)}${s.context.broken.length ? ` · 어긋난 판 ${s.context.broken.map((b) => b.n).join(', ')}` : ''}`);
   console.log(`응답 시간 p95: 일반 턴 ${ms(s.turnLatencyP95)} (목표 10초) · 거울 장면 ${ms(s.mirrorLatencyP95)} (목표 20초)`);
   console.log(`판당 호출: 최대 ${s.callsMax} · 평균 ${s.callsAvg} (목표 60회 이하) · 거울 원문만 ${s.mirrorOriginalOnly}판 · 예시 손님 대체 ${s.guestFallback}판`);
   if (s.errors.length) console.log(`오류가 난 판: ${s.errors.map((e) => e.n).join(', ')}`);

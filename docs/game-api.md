@@ -4,7 +4,7 @@ Android 앱(React Native·Expo)이 부르는 서버 API입니다. 기준 문서�
 
 - 기본 주소: `http://<서버>:3000/api/game`. 논문용 API(`/api/...`)와 분리되어 있습니다(NFR-08).
 - 모든 `POST`에는 `requestId`(영문·숫자·`-`·`_` 8~64자)를 넣습니다. 버튼을 누를 때마다 새로 만들고, 같은 요청을 다시 보낼 때는 같은 값을 씁니다(FR-12).
-- `playerId`: 기기마다 한 번 만들어 저장해 두는 익명 ID(6~64자). 카드 조회·삭제에 씁니다.
+- `playerId`: 기기마다 한 번 만들어 저장해 두는 익명 ID(영문·숫자·`-`·`_` 6~64자). 세션을 만들 때 본문에 넣고, **그 뒤 모든 요청에는 헤더 `x-player-id`로 보냅니다.** 세션을 만든 플레이어만 읽고 바꿀 수 있습니다(다르면 403 `FORBIDDEN`).
 - 응답은 언제나 세션의 **현재 화면 상태(view)** 입니다. 앱은 `stage`를 보고 화면을 고릅니다.
 
 ## 단계 (stage)
@@ -31,15 +31,15 @@ Android 앱(React Native·Expo)이 부르는 서버 API입니다. 기준 문서�
 | `POST /sessions/:id/worry` | `{ requestId, worry }` 또는 `{ requestId, exampleId }` | 위험 판정(규칙 → AI) + 손님 생성(실패 시 1회 재시도, 또 실패하면 예시 손님) |
 | `POST /sessions/:id/guest/reroll` | `{ requestId }` | 손님 다시 만들기, 1회까지(FR-03) |
 | `POST /sessions/:id/start` | `{ requestId }` | 상담 시작. 1턴 = 손님 첫 대사 + 선택지 |
-| `POST /sessions/:id/turn` | `{ requestId, choiceId }` 또는 `{ requestId, text }` | 플레이어 발화. `turn.input`이 `text`이면 직접 입력만 받음 |
+| `POST /sessions/:id/turn` | `{ requestId, turn, choiceId }` 또는 `{ requestId, turn, text }` | 플레이어 발화. `turn`은 화면에 보이는 지금 턴 번호(`view.turn.n`)이고, 지난 턴 번호면 409 `STALE_TURN`으로 거절(늦게 온 중복 입력 방지). `turn.input`이 `text`이면 직접 입력만 받음 |
 | `POST /sessions/:id/end` | `{ requestId }` | 플레이어가 마무리(언제든). 하이라이트가 있으면 `mirror`, 없으면 `done` |
 | `POST /sessions/:id/mirror` | `{ requestId, highlightId }` | 고른 하이라이트를 자기 지향 문장으로 변환·점검 |
 | `POST /sessions/:id/decision` | `{ requestId, verdict, edited? }` | `verdict`: `accept`·`modify`·`hold`·`reject`. `edited`: 플레이어가 직접 고친 문장(선택) |
-| `POST /sessions/:id/quit` | `{ requestId }` | 그만하기 |
+| `POST /sessions/:id/quit` | `{ requestId }` | 그만하기. 도움 안내(`help`) 상태에서는 안내를 그대로 둠 |
 | `GET /sessions/:id` | — | 현재 상태 다시 받기(앱 재시작 등) |
-| `DELETE /sessions/:id` | 헤더 `x-player-id` | 세션과 그 카드를 모두 삭제(FR-11) |
-| `GET /cards` | 헤더 `x-player-id` | 저장 동의한 판의 반환 문장 카드 목록 |
-| `DELETE /cards/:cardId` | 헤더 `x-player-id` | 카드와 그 세션을 삭제 |
+| `DELETE /sessions/:id` | — | 세션과 그 카드를 모두 삭제(FR-11) |
+| `GET /cards` | — | 저장 동의한 판의 반환 문장 카드 목록 |
+| `DELETE /cards/:cardId` | — | 카드와 그 세션을 삭제 |
 
 ## 응답(view)의 주요 필드
 
@@ -78,9 +78,18 @@ Android 앱(React Native·Expo)이 부르는 서버 API입니다. 기준 문서�
 | 422 | `CONSENT_REQUIRED` | 동의 화면으로 |
 | 409 | `BUSY` | 앞 요청 응답을 기다림 |
 | 409 | `HELP_LOCKED` | 도움 안내 화면 유지 |
+| 409 | `STALE_TURN` (`turn`: 지금 턴 번호) | 이미 처리된 입력. `GET /sessions/:id`로 화면 갱신 |
+| 403 | `FORBIDDEN` | 다른 플레이어의 세션. 새 판 시작 |
 | 409 | `WRONG_STAGE` | `GET /sessions/:id`로 현재 상태를 다시 받아 화면 갱신 |
 | 409 | `REROLL_USED` | 다시 만들기 버튼 숨김 |
-| 503 | `AI_RETRY` (`retryable: true`) | 입력한 내용을 그대로 두고 "다시 시도" 버튼. 상태는 바뀌지 않았음(FR-12) |
+| 503 | `AI_RETRY` (`retryable: true`) | 입력한 내용을 그대로 두고 "다시 시도" 버튼. 상태는 바뀌지 않았음(FR-12). 상담 턴과 거울 장면 모두 해당 |
 | 404 | `NOT_FOUND` | 새 판 시작 |
 
 같은 `requestId`로 다시 보내면 저장된 결과를 그대로 돌려주고 `replayed: true`가 붙습니다. 실패한 요청은 저장하지 않아 같은 `requestId`로 다시 시도할 수 있습니다.
+
+## 그 밖의 동작
+
+- **위험 감지**: 걱정, 매 턴 발화, 비교·판단의 수정 문장에서 위험이 감지되면 `stage`가 `help`로 바뀝니다. 응답의 `help` 문구를 보여 주고 상담 화면으로 돌아가는 길을 두지 않습니다.
+- **보관 기간**: 저장 동의한 세션과 카드는 `consent.retention_days`(지금 30일, 임시값)가 지나면 서버가 지웁니다.
+- **미동의 세션**: 디스크에 쓰지 않고, 끝난 뒤(마무리·그만하기·도움 안내) 10분이 지나면 메모리에서도 지웁니다. 그 뒤 `GET`은 404입니다.
+- **거울 장면 시간**: 변환·점검 호출 1회 제한은 5초, 최대 4회라 20초 안에 끝납니다(NFR-01).

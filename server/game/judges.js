@@ -67,3 +67,10 @@ export function judgePlayer(raw) {
   if (p.action === 'text' && !str(p.text, 300)) return { valid: false, error: 'TEXT' };
   return { valid: true, action: p.action, choice: Number.isInteger(p.choice) ? p.choice : 0, text: typeof p.text === 'string' ? p.text.trim() : '' };
 }
+
+// 테스트 도구: 맥락 유지 판정
+export function judgeContext(raw) {
+  const p = parse(raw);
+  if (!p || typeof p.consistent !== 'boolean') return { valid: false, error: 'SCHEMA' };
+  return { valid: true, consistent: p.consistent, note: typeof p.note === 'string' ? p.note.slice(0, 200) : '' };
+}

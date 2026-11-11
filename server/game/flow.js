@@ -20,7 +20,7 @@ export function newGameSession({ playerId, store, content, prompts }) {
   return {
     id: crypto.randomUUID(), playerId, createdAt: at, updatedAt: at,
     contentVersion: content.game.version, contentHash: content.hash,
-    prompts: Object.fromEntries(Object.entries(prompts).filter(([k]) => k !== 'player').map(([k, p]) => [k, `${p.ref}@${p.hash}`])),
+    prompts: Object.fromEntries(Object.entries(prompts).filter(([k]) => !['player', 'context'].includes(k)).map(([k, p]) => [k, `${p.ref}@${p.hash}`])),
     consent: { at, store: !!store },
     stage: 'worry', worry: null, guest: null, turns: [], facts: [], highlights: [], suggestedEnd: false,
     endReason: null, mirror: null, decision: null, risk: null, cardId: null,
@@ -29,7 +29,7 @@ export function newGameSession({ playerId, store, content, prompts }) {
 }
 
 export function requireStage(s, ...stages) {
-  if (s.stage === 'help') throw new GameError('도움 안내로 넘어간 세션은 다시 시작할 수 없어요', 409, { code: 'HELP_LOCKED' });
+  if (s.stage === 'help' && !stages.includes('help')) throw new GameError('도움 안내로 넘어간 세션은 다시 시작할 수 없어요', 409, { code: 'HELP_LOCKED' });
   if (!stages.includes(s.stage)) throw new GameError('지금 단계에서 할 수 없는 요청이에요', 409, { code: 'WRONG_STAGE', stage: s.stage });
 }
 
@@ -79,8 +79,9 @@ export async function submitWorry(s, d, ctx) {
 export async function rerollGuest(s, d, ctx) {
   requireStage(s, 'guest');
   if (s.guest.rerollsUsed >= ctx.content.game.limits.guest_rerolls) throw new GameError('손님은 한 번만 다시 만들 수 있어요', 409, { code: 'REROLL_USED' });
-  const guest = await ctx.ai.makeGuest(s, ctx, s.worry.text, s.worry.exampleId);
-  s.guest = { ...guest, rerollsUsed: s.guest.rerollsUsed + 1, previous: s.guest.card.name, at: now() };
+  const prev = s.guest.card;
+  const guest = await ctx.ai.makeGuest(s, ctx, s.worry.text, s.worry.exampleId, prev);
+  s.guest = { ...guest, rerollsUsed: s.guest.rerollsUsed + 1, previous: prev.name, at: now() };
 }
 
 const withIds = (turnNo, choices) => choices.map((c, i) => ({ id: `t${turnNo}c${i + 1}`, text: c.text, attitude: c.attitude || null }));
@@ -97,6 +98,9 @@ export async function playTurn(s, d, ctx) {
   const g = ctx.content.game;
   const T = g.turns;
   const cur = s.turns.at(-1);
+  // FR-12·NFR-02: 요청이 가리키는 턴이 지금 턴이 아니면(늦게 온 중복 입력) 반영하지 않는다
+  if (!Number.isInteger(d.turn)) throw new GameError('turn(지금 턴 번호)이 필요해요', 422, { field: 'turn' });
+  if (d.turn !== cur.n) throw new GameError('이미 지나간 턴이에요. 화면을 다시 불러와 주세요.', 409, { code: 'STALE_TURN', turn: cur.n });
   // 플레이어 발화: 선택지 또는 직접 입력. 조언 요청 턴은 직접 입력만(FR-05)
   let player;
   if (d.choiceId != null) {
@@ -132,12 +136,19 @@ export async function playTurn(s, d, ctx) {
     judge = await judgeCall();
   } else if (dependsOnJudge) {
     judge = await judgeCall();
-    if (judge?.error === 'CALL_CAP') return endByCap(s, cur, player, null);
-    if (judge?.error) throw aiRetry(judge.error);
-    if (judge?.verdict !== 'risk') { plan = planNext(hlBefore + (judge?.verdict === 'ok' ? 1 : 0)); turn = await callTurn(plan); }
+    if (judge?.error && judge.error !== 'CALL_CAP') throw aiRetry(judge.error);
+    if (!judge?.error && judge?.verdict !== 'risk') { plan = planNext(hlBefore + (judge?.verdict === 'ok' ? 1 : 0)); turn = await callTurn(plan); }
   } else {
     plan = planNext(hlBefore);
     [judge, turn] = await Promise.all([judgeCall(), callTurn(plan)]);
+  }
+  // FR-10: 위험이 감지됐으면 다른 어떤 처리(호출 상한 종료 포함)보다 먼저 도움 안내
+  const aiRisk = (judge && !judge.error && judge.verdict === 'risk') || (turn && !turn.error && turn.playerRisk);
+  if (aiRisk) {
+    cur.player = { ...player, at: now() };
+    if (judge && !judge.error) cur.judge = { verdict: judge.verdict, source: judge.source, hits: judge.hits };
+    toHelp(s, { stage: 'counsel', source: judge?.verdict === 'risk' ? `judge_${judge.source}` : 'turn_ai', hits: judge?.hits });
+    return;
   }
   if (judge?.error === 'CALL_CAP' || turn?.error === 'CALL_CAP') return endByCap(s, cur, player, judge && !judge.error ? judge : null);
   if (judge?.error) throw aiRetry(judge.error);
@@ -146,7 +157,6 @@ export async function playTurn(s, d, ctx) {
   // 여기서부터 기록(오류가 나면 위에서 끝나 아무것도 바뀌지 않는다)
   cur.player = { ...player, at: now() };
   if (judge) cur.judge = { verdict: judge.verdict, source: judge.source, hits: judge.hits };
-  if (judge?.verdict === 'risk' || turn?.playerRisk) { toHelp(s, { stage: 'counsel', source: judge?.verdict === 'risk' ? `judge_${judge.source}` : 'turn_ai', hits: judge?.hits }); return; }
   // FR-06: 직접 입력한 발화가 조언이면 원문 그대로 기록장에 (선택지는 넣지 않음)
   if (judge?.verdict === 'ok') {
     const h = { id: `h${s.highlights.length + 1}`, turn: n, text: player.text, guestBefore: cur.guest, guestAfter: null };
@@ -155,6 +165,7 @@ export async function playTurn(s, d, ctx) {
   }
   if (autoEnd) return finishCounsel(s, 'auto');
   for (const f of turn.facts) if (!s.facts.includes(f)) s.facts.push(f);
+  if (s.facts.length > 20) s.facts = s.facts.slice(-20); // 프롬프트가 길어지지 않게 최근 20개만
   if (cur.highlightId) s.highlights.find((h) => h.id === cur.highlightId).guestAfter = turn.reply;
   if (plan.suggestEnd) s.suggestedEnd = true;
   s.turns.push({ n: plan.nextN, kind: plan.kind, guest: turn.reply, choices: plan.kind === 'advice' ? [] : withIds(plan.nextN, turn.choices), suggestEnd: plan.suggestEnd, player: null, judge: null });
@@ -164,7 +175,11 @@ function endByCap(s, cur, player, judge) {
   cur.player = { ...player, at: now() };
   if (judge) {
     cur.judge = { verdict: judge.verdict, source: judge.source, hits: judge.hits };
-    if (judge.verdict === 'ok') s.highlights.push({ id: `h${s.highlights.length + 1}`, turn: cur.n, text: player.text, guestBefore: cur.guest, guestAfter: null });
+    if (judge.verdict === 'ok') {
+      const h = { id: `h${s.highlights.length + 1}`, turn: cur.n, text: player.text, guestBefore: cur.guest, guestAfter: null };
+      s.highlights.push(h);
+      cur.highlightId = h.id;
+    }
   }
   finishCounsel(s, 'call_cap');
 }
@@ -185,6 +200,7 @@ export async function pickHighlight(s, d, ctx) {
   const h = s.highlights.find((x) => x.id === d.highlightId);
   if (!h) throw new GameError('돌려받을 조언을 골라 주세요', 422, { field: 'highlightId' });
   const r = await ctx.ai.mirror(s, ctx, h);
+  if (r.error) throw aiRetry(r.error); // 통신 오류·시간 초과: 원문만으로 확정하지 않고 다시 시도하게 한다(FR-12)
   s.mirror = { highlightId: h.id, original: h.text, self: r.self, shown: r.shown, checks: r.checks, at: now() };
   s.stage = 'judge';
 }
@@ -194,6 +210,10 @@ export async function decide(s, d, ctx) {
   requireStage(s, 'judge');
   if (!VERDICTS.includes(d.verdict)) throw new GameError('수용·수정·보류·거부 중 하나를 골라 주세요', 422, { field: 'verdict' });
   const edited = d.edited == null || (typeof d.edited === 'string' && !d.edited.trim()) ? null : text('edited', d.edited, ctx.content.game.edit);
+  if (edited) {
+    const hits = ctx.safety.risk(edited);
+    if (hits.length) { toHelp(s, { stage: 'judge', source: 'rule', hits }); return; }
+  }
   const aiDraft = s.mirror.self;
   s.decision = { verdict: d.verdict, aiDraft, edited, final: edited ?? aiDraft ?? s.mirror.original, at: now() };
   s.stage = 'done';
@@ -209,7 +229,7 @@ export async function decide(s, d, ctx) {
 }
 
 export function quit(s) {
-  if (['done', 'quit'].includes(s.stage)) return;
+  if (['done', 'quit', 'help'].includes(s.stage)) return; // 도움 안내는 그대로 둔다
   s.quitFrom = s.stage;
   s.stage = 'quit';
 }

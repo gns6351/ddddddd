@@ -4,9 +4,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { boot, FIXTURE } from './helpers.js';
+import { boot as rawBoot, FIXTURE } from './helpers.js';
 
 const P = 'player-test-01';
+// 게임 API는 세션 주인 확인을 위해 x-player-id 헤더가 필요하다. 테스트에서는 기본으로 붙인다
+async function boot(...args) {
+  const t = await rawBoot(...args);
+  const H = { 'x-player-id': P };
+  return { ...t, post: (p, b, h) => t.post(p, b, { ...H, ...h }), get: (p, h) => t.get(p, { ...H, ...h }), del: (p, h) => t.del(p, { ...H, ...h }) };
+}
 let seq = 0;
 const rid = () => `req-${process.pid}-${(seq += 1)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -27,7 +33,11 @@ async function newGame(t, { store = false, worry = '[TEST] 시험을 망쳐서 �
   if (start && r.body.stage === 'guest') r = await t.post(`/api/game/sessions/${id}/start`, { requestId: rid() });
   return { id, view: r.body };
 }
-const turn = (t, id, body) => t.post(`/api/game/sessions/${id}/turn`, { requestId: rid(), ...body });
+// 지금 턴 번호를 붙여 발화를 보낸다(turn을 직접 주면 그 값을 쓴다)
+async function turn(t, id, body) {
+  const n = body.turn ?? (await t.get(`/api/game/sessions/${id}`)).body.turn?.n ?? 1;
+  return t.post(`/api/game/sessions/${id}/turn`, { requestId: rid(), turn: n, ...body });
+}
 const pickFirst = (v) => ({ choiceId: v.turn.choices[0].id });
 const raw = (t, id) => t.app.locals.study.gameStore.get(id);
 
@@ -120,7 +130,7 @@ test('FR-04: 손님 턴 프롬프트에 손님 카드·전체 대화·플레이�
   const t = await boot({ llmModeEnv: 'live', apiKey: 'k' }, { geminiClient: gem });
   try {
     const { id } = await newGame(t);
-    const [a, b] = await Promise.all([turn(t, id, { text: '[TEST] 시험은 이틀 뒤라고 했죠' }), new Promise((r) => setTimeout(r, 20)).then(() => turn(t, id, { text: '[TEST] 다른 요청' }))]);
+    const [a, b] = await Promise.all([turn(t, id, { turn: 1, text: '[TEST] 시험은 이틀 뒤라고 했죠' }), new Promise((r) => setTimeout(r, 20)).then(() => turn(t, id, { turn: 1, text: '[TEST] 다른 요청' }))]);
     assert.equal(a.status, 200);
     assert.deepEqual([b.status, b.body.code], [409, 'BUSY']);
     await turn(t, id, { choiceId: a.body.turn.choices[0].id });
@@ -289,7 +299,7 @@ test('FR-12·NFR-02: 같은 requestId는 저장된 결과(손님 대사 1회 생
   const t = await boot({ llmModeEnv: 'live', apiKey: 'k' }, { geminiClient: gem });
   try {
     const { id, view } = await newGame(t);
-    const req = { requestId: rid(), choiceId: view.turn.choices[0].id };
+    const req = { requestId: rid(), turn: 1, choiceId: view.turn.choices[0].id };
     const [a, b] = await Promise.all([t.post(`/api/game/sessions/${id}/turn`, req), t.post(`/api/game/sessions/${id}/turn`, req)]);
     assert.equal(a.body.turn.guest, b.body.turn.guest, '동시 재전송도 같은 대사');
     const c = await t.post(`/api/game/sessions/${id}/turn`, req);
@@ -391,5 +401,118 @@ test('FR-01: 끝난 미동의 세션은 잠시 뒤 메모리에서도 지움, �
     st.sweep(Date.now() + 11 * 60_000);
     assert.equal((await t.get(`/api/game/sessions/${a.id}`)).status, 404);
     assert.equal((await t.get(`/api/game/sessions/${b.id}`)).body.stage, 'quit');
+  } finally { await t.close(); }
+});
+
+test('NFR-04: 세션은 만든 플레이어만 읽고 바꿀 수 있음', async () => {
+  const t = await boot();
+  try {
+    const { id } = await newGame(t);
+    const other = { 'x-player-id': 'someone-else-01' };
+    assert.deepEqual([(await t.get(`/api/game/sessions/${id}`, other)).status, (await t.get(`/api/game/sessions/${id}`, { 'x-player-id': '' })).status], [403, 403]);
+    const r = await t.post(`/api/game/sessions/${id}/turn`, { requestId: rid(), turn: 1, text: '[TEST] 남의 세션' }, other);
+    assert.deepEqual([r.status, r.body.code], [403, 'FORBIDDEN']);
+    assert.equal((await raw(t, id)).turns[0].player, null);
+  } finally { await t.close(); }
+});
+
+test('FR-12: 응답 뒤 늦게 온 중복 입력(지난 턴 번호)은 다음 턴에 반영되지 않음', async () => {
+  const t = await boot();
+  try {
+    const { id } = await newGame(t);
+    const a = await turn(t, id, { turn: 1, text: '[TEST] 한 번 눌렀어요' });
+    assert.equal(a.body.turn.n, 2);
+    const late = await turn(t, id, { turn: 1, text: '[TEST] 한 번 눌렀어요' }); // 다른 requestId로 같은 입력이 또 옴
+    assert.deepEqual([late.status, late.body.code, late.body.turn], [409, 'STALE_TURN', 2]);
+    assert.equal((await t.post(`/api/game/sessions/${id}/turn`, { requestId: rid(), text: '[TEST] 턴 번호 없음' })).body.field, 'turn');
+    const s = await raw(t, id);
+    assert.equal(s.turns.length, 2);
+    assert.equal(s.turns[1].player, null);
+  } finally { await t.close(); }
+});
+
+test('FR-08·12: 거울 장면에서 AI 통신 오류가 나면 원문만으로 확정하지 않고 재시도 안내, 다시 시도하면 정상', async () => {
+  let failMirror = 1;
+  const gem = { models: { async generateContent(req) {
+    const c = req.contents;
+    if (/손님을 만드는 도구/.test(c)) return { text: JSON.stringify({ name: '손님', age: '20살', role: '학생', background: '배경', situation: '상황', core_conflict: '갈등', automatic_thought: '생각', opening: '첫 대사', choices: [{ text: 'a', attitude: 'empathy' }, { text: 'b', attitude: 'specify' }] }) };
+    if (/위험 신호가 있는지/.test(c)) return { text: '{"risk": false}' };
+    if (/조언인지 판정/.test(c)) return { text: '{"verdict":"ok"}' };
+    if (/자기 자신에게 하는 말로 바꾸는/.test(c)) { if (failMirror > 0) { failMirror -= 1; throw Object.assign(new Error('boom'), { status: 503 }); } return { text: '{"self":"나는 하나씩 해 볼 수 있다"}' }; }
+    if (/변환 점검 모듈/.test(c)) return { text: '{"reversal":false,"addition":false,"forcing":false,"note":""}' };
+    return { text: JSON.stringify({ reply: '대답', choices: [{ text: 'x', attitude: 'empathy' }, { text: 'y', attitude: 'explore' }], facts: [], player_risk: false }) };
+  } } };
+  const t = await boot({ llmModeEnv: 'live', apiKey: 'k' }, { geminiClient: gem });
+  try {
+    const { id } = await newGame(t);
+    await turn(t, id, { turn: 1, text: '하나씩 해 봐요' });
+    const v = (await t.post(`/api/game/sessions/${id}/end`, { requestId: rid() })).body;
+    let r = await t.post(`/api/game/sessions/${id}/mirror`, { requestId: rid(), highlightId: v.mirrorOptions[0].id });
+    assert.deepEqual([r.status, r.body.code], [503, 'AI_RETRY']);
+    assert.equal((await raw(t, id)).stage, 'mirror', '상태 그대로');
+    r = await t.post(`/api/game/sessions/${id}/mirror`, { requestId: rid(), highlightId: v.mirrorOptions[0].id });
+    assert.deepEqual([r.body.stage, r.body.mirror.shown], ['judge', 'self']);
+  } finally { await t.close(); }
+});
+
+test('FR-10: 호출 상한에 걸린 순간에도 위험은 도움 안내가 먼저, 수정 문장의 위험도 도움 안내, 도움 안내에서 그만하기를 눌러도 안내 유지', async () => {
+  const t = await boot({ contentDir: contentWith((g) => ({ ...g, limits: { ...g.limits, calls_per_game: 7, mirror_reserve: 4 } })) });
+  try {
+    // 상담 상한 3회: 손님 생성·위험 판정 2회 뒤 1회만 남음 → 직접 입력 턴에서 조언 판정(위험)만 되고 손님 턴은 상한에 걸림
+    const { id } = await newGame(t);
+    let r = await turn(t, id, { turn: 1, text: '[TEST] 위험한 권유예요 #risk' });
+    assert.equal(r.body.stage, 'help');
+    r = await t.post(`/api/game/sessions/${id}/quit`, { requestId: rid() });
+    assert.equal(r.body.stage, 'help');
+    assert.ok(r.body.help.lines.length);
+  } finally { await t.close(); }
+  const t2 = await boot();
+  try {
+    const { id, v } = await toMirror(t2, '[TEST] 하나씩 해 봐요');
+    await t2.post(`/api/game/sessions/${id}/mirror`, { requestId: rid(), highlightId: v.mirrorOptions[0].id });
+    const r = await t2.post(`/api/game/sessions/${id}/decision`, { requestId: rid(), verdict: 'modify', edited: '[TEST] 그냥 죽고 싶어요' });
+    assert.equal(r.body.stage, 'help');
+    assert.equal((await raw(t2, id)).decision, null);
+  } finally { await t2.close(); }
+});
+
+test('FR-03: 다시 만들면 이전과 다른 손님, 같은 손님이 나오면 다시 시도', async () => {
+  const t = await boot();
+  try {
+    let g = await newGame(t, { start: false });
+    const first = g.view.guest.name;
+    let r = await t.post(`/api/game/sessions/${g.id}/guest/reroll`, { requestId: rid() });
+    assert.notEqual(r.body.guest.name, first);
+    g = await newGame(t, { worry: '[TEST] 팀플에서 저만 일을 다 해요 #sameguest', start: false });
+    r = await t.post(`/api/game/sessions/${g.id}/guest/reroll`, { requestId: rid() });
+    assert.notEqual(r.body.guest.name, g.view.guest.name, '같은 손님만 나오면 다른 예시 손님으로');
+    assert.equal(r.body.guest.source, 'example');
+  } finally { await t.close(); }
+});
+
+test('FR-01: 보관 기간이 지난 저장 세션과 카드는 지움', async () => {
+  const t = await boot();
+  try {
+    const { id, v } = await toMirror(t, '[TEST] 하나씩 해 봐요');
+    await t.post(`/api/game/sessions/${id}/mirror`, { requestId: rid(), highlightId: v.mirrorOptions[0].id });
+    await t.post(`/api/game/sessions/${id}/decision`, { requestId: rid(), verdict: 'accept' });
+    const st = t.app.locals.study.gameStore;
+    assert.deepEqual(await st.purgeExpired(30), { sessions: 0, cards: 0 }, '기간 안이면 그대로');
+    assert.deepEqual(await st.purgeExpired(30, Date.now() + 31 * 86400_000), { sessions: 1, cards: 1 });
+    assert.equal((await t.get(`/api/game/sessions/${id}`)).status, 404);
+    assert.equal((await t.get('/api/game/cards')).body.cards.length, 0);
+  } finally { await t.close(); }
+});
+
+test('NFR-05: 플레이어에게 보이는 고정 문구(동의·도움 안내·예시 걱정·예시 손님)에 금지 표현 없음', async () => {
+  const t = await boot();
+  try {
+    const cfg = (await t.get('/api/game/config')).body;
+    const game = JSON.parse(fs.readFileSync(path.join(FIXTURE, 'game', 'game.json'), 'utf8'));
+    const guests = fs.readFileSync(path.join(FIXTURE, 'game', 'guests', 'examples.json'), 'utf8');
+    const visible = JSON.stringify([cfg.consent, cfg.help, cfg.examples]) + guests;
+    for (const w of game.banned_words) assert.ok(!visible.includes(w), `금지 표현: ${w}`);
+    assert.ok(!visible.includes('[미정]'), '미정 표시가 플레이어에게 보이지 않음');
+    assert.equal(game.consent.retention_days, 30);
   } finally { await t.close(); }
 });

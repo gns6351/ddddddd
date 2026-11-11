@@ -32,11 +32,18 @@ export function createGameRouter({ settings, llm }) {
     return rid;
   };
 
+  // 세션은 만든 플레이어만 읽고 바꿀 수 있다(헤더 x-player-id). NFR-04
+  async function ownSession(req) {
+    const s = await store.get(req.params.id);
+    if (!s) throw new flow.GameError('세션을 찾을 수 없어요', 404, { code: 'NOT_FOUND' });
+    if (req.get('x-player-id') !== s.playerId) throw new flow.GameError('이 세션에 접근할 수 없어요', 403, { code: 'FORBIDDEN' });
+    return s;
+  }
+
   // 세션 하나에 대한 변경 요청 처리
   async function mutate(req, res, fn) {
     const rid = requestIdOf(req);
-    const s = await store.get(req.params.id);
-    if (!s) throw new flow.GameError('세션을 찾을 수 없어요', 404, { code: 'NOT_FOUND' });
+    const s = await ownSession(req);
     if (s.requests[rid]) return res.status(s.requests[rid].status).json({ ...s.requests[rid].body, replayed: true });
     const b = busy.get(s.id);
     if (b) {
@@ -94,8 +101,7 @@ export function createGameRouter({ settings, llm }) {
   }));
 
   router.get('/sessions/:id', wrap(async (req, res) => {
-    const s = await store.get(req.params.id);
-    if (!s) throw new flow.GameError('세션을 찾을 수 없어요', 404, { code: 'NOT_FOUND' });
+    const s = await ownSession(req);
     res.json(flow.publicView(s, loadGameContent(settings.contentDir)));
   }));
 
@@ -107,9 +113,7 @@ export function createGameRouter({ settings, llm }) {
 
   // FR-11: 플레이어가 삭제하면 세션과 카드를 모두 지운다
   router.delete('/sessions/:id', wrap(async (req, res) => {
-    const s = await store.get(req.params.id);
-    if (!s) throw new flow.GameError('세션을 찾을 수 없어요', 404, { code: 'NOT_FOUND' });
-    if (req.get('x-player-id') !== s.playerId) throw new flow.GameError('이 세션을 지울 수 없어요', 403);
+    const s = await ownSession(req);
     await store.remove(s.id);
     res.status(204).end();
   }));
@@ -135,9 +139,15 @@ export function createGameRouter({ settings, llm }) {
     const known = err instanceof flow.GameError || (err.status && err.status < 500);
     if (!known) console.error(err);
     const body = { error: known ? err.message : '서버 오류가 났어요' };
-    for (const k of ['code', 'field', 'reason', 'min', 'max', 'stage', 'retryable', 'cause']) if (err[k] !== undefined) body[k] = err[k];
+    for (const k of ['code', 'field', 'reason', 'min', 'max', 'stage', 'turn', 'retryable', 'cause']) if (err[k] !== undefined) body[k] = err[k];
     res.status(err.status || 500).json(body);
   });
+
+  // FR-01 보관 기간: 지난 세션과 카드를 지운다(시작할 때 한 번, 그 뒤 1시간마다)
+  const purge = () => store.purgeExpired(loadGameContent(settings.contentDir).game.consent.retention_days).catch((e) => console.error('보관 기간 정리 실패:', e.message));
+  purge();
+  const purgeTimer = setInterval(purge, 3600_000);
+  purgeTimer.unref?.();
 
   router.locals = { store };
   return router;

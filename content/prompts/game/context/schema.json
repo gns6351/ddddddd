@@ -1,0 +1,1 @@
+{ "type": "object", "properties": { "consistent": { "type": "boolean" }, "note": { "type": "string" } }, "required": ["consistent", "note"] }

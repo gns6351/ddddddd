@@ -71,6 +71,32 @@ export function createGameStore(dataDir, { ttlMinutes = 120, endedGraceMinutes =
     return next.length !== list.length;
   }
 
+  // ---- 보관 기간(FR-01): 만든 지 days일이 지난 저장 세션과 카드를 지운다 ----
+  async function purgeExpired(days, now = Date.now()) {
+    if (!(Number(days) > 0)) return { sessions: 0, cards: 0 };
+    const limit = now - Number(days) * 86400_000;
+    const old = (iso) => Number.isFinite(Date.parse(iso)) && Date.parse(iso) < limit;
+    let sessions = 0;
+    let cardsRemoved = 0;
+    for (const f of await fsp.readdir(sessDir).catch(() => [])) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const s = JSON.parse(await fsp.readFile(path.join(sessDir, f), 'utf8'));
+        if (old(s.createdAt)) { mem.delete(s.id); await fsp.rm(path.join(sessDir, f), { force: true }); sessions += 1; }
+      } catch { /* 깨진 파일은 건너뜀 */ }
+    }
+    for (const f of await fsp.readdir(cardDir).catch(() => [])) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const file2 = path.join(cardDir, f);
+        const list = JSON.parse(await fsp.readFile(file2, 'utf8')).cards;
+        const keep = list.filter((c) => !old(c.createdAt));
+        if (keep.length !== list.length) { cardsRemoved += list.length - keep.length; if (keep.length) await writeJson(file2, { cards: keep }); else await fsp.rm(file2, { force: true }); }
+      } catch { /* 건너뜀 */ }
+    }
+    return { sessions, cards: cardsRemoved };
+  }
+
   // ---- 일반 로그 (원문 없음) ----
   function log(entry) {
     try {
@@ -92,5 +118,5 @@ export function createGameStore(dataDir, { ttlMinutes = 120, endedGraceMinutes =
   const timer = setInterval(sweep, 60_000);
   timer.unref?.();
 
-  return { get, save, remove, cards, addCard, removeCard, log, sweep, logDir, memSize: () => mem.size, isPlayerId: (p) => PLAYER.test(String(p)) };
+  return { get, save, remove, cards, addCard, removeCard, purgeExpired, log, sweep, logDir, memSize: () => mem.size, isPlayerId: (p) => PLAYER.test(String(p)) };
 }

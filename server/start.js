@@ -18,6 +18,7 @@ function ready(port) {
   console.log(line);
   console.log(` 참가자 화면:   http://localhost:${port}`);
   console.log(` 연구자 화면:   http://localhost:${port}/admin`);
+  console.log(` 거울상담소 API: http://localhost:${port}/api/game  (문서: docs/game-api.md)`);
   if (settings.host === '0.0.0.0') for (const ip of lanAddresses()) console.log(` 같은 와이파이: http://${ip}:${port}`);
   console.log(line);
   console.log(` AI: ${settings.llmMode === 'live' ? `실제 호출 (${settings.model}, thinking=${settings.thinking || '기본'})` : '모의(mock) — .env에 GEMINI_API_KEY를 넣으면 실제 호출'}`);
