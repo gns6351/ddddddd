@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "advices": { "type": "array", "items": { "type": "string" } } },
+  "required": ["advices"],
+  "additionalProperties": false
+}

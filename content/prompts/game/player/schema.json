@@ -1,0 +1,1 @@
+{ "type": "object", "properties": { "action": { "type": "string", "enum": ["choice", "text", "end"] }, "choice": { "type": "integer" }, "text": { "type": "string" } }, "required": ["action"] }

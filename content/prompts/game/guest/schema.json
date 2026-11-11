@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" }, "age": { "type": "string" }, "role": { "type": "string" },
+    "background": { "type": "string" }, "situation": { "type": "string" }, "core_conflict": { "type": "string" },
+    "automatic_thought": { "type": "string" }, "opening": { "type": "string" },
+    "choices": { "type": "array", "items": { "type": "object", "properties": { "text": { "type": "string" }, "attitude": { "type": "string", "enum": ["empathy", "specify", "explore"] } }, "required": ["text", "attitude"] } }
+  },
+  "required": ["name", "age", "role", "background", "situation", "core_conflict", "automatic_thought", "opening", "choices"]
+}

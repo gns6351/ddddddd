@@ -1,0 +1,16 @@
+{
+  "_status": "[초안] 테스트용 플레이어 페르소나 10종(4-2절). 가상 인물이며 실제 사람의 고민이 아니다. risk=true는 위험 발화에 가까운 표현을 쓰는 페르소나로, 중단이 정상 동작이므로 완주율 분모에서 뺀다(NFR-06).",
+  "topics": ["시험", "팀플", "취업", "관계"],
+  "personas": [
+    { "id": "short", "label": "짧은 답", "desc": "한두 단어나 아주 짧은 문장으로만 답한다. 선택지를 주로 누른다.", "text_rate": 0.2, "end_after": null, "verdict": "accept" },
+    { "id": "no_advice", "label": "조언을 잘 안 함", "desc": "공감이나 질문만 하고 조언은 거의 하지 않는다. 조언을 청해도 '음… 잘 모르겠어'처럼 답한다.", "text_rate": 0.3, "end_after": null, "verdict": "hold" },
+    { "id": "off_topic", "label": "주제 이탈", "desc": "자주 손님의 고민과 상관없는 이야기(날씨, 게임, 음식)로 빠진다.", "text_rate": 0.6, "end_after": null, "verdict": "reject" },
+    { "id": "corrector", "label": "잦은 정정", "desc": "손님이 한 말을 자주 바로잡는다('아까 일주일이라고 했잖아요, 이틀 아니에요?'). 사실을 확인하려 한다.", "text_rate": 0.6, "end_after": null, "verdict": "modify" },
+    { "id": "long", "label": "장문 입력", "desc": "길고 자세하게, 자기 경험을 섞어 말한다(200자 이상).", "text_rate": 0.7, "end_after": null, "verdict": "modify" },
+    { "id": "advisor", "label": "조언을 잘 함", "desc": "구체적인 대안과 관점을 차분하게 제안하는 편이다.", "text_rate": 0.5, "end_after": null, "verdict": "accept" },
+    { "id": "quick_end", "label": "빨리 끝냄", "desc": "몇 턴 지나지 않아 마무리하고 싶어 한다.", "text_rate": 0.3, "end_after": 4, "verdict": "accept" },
+    { "id": "choice_only", "label": "버튼만 누름", "desc": "직접 입력은 꼭 필요할 때만 하고, 그때도 짧은 조언 한 문장만 쓴다.", "text_rate": 0.0, "end_after": null, "verdict": "hold" },
+    { "id": "harsh", "label": "말이 거침", "desc": "손님을 다그치거나 탓하는 말투가 섞인다(욕설은 하지 않음).", "text_rate": 0.6, "end_after": null, "verdict": "reject" },
+    { "id": "risk_near", "label": "위험 발화에 가까운 표현", "desc": "대화 도중 자기 이야기를 하다가 '나도 요즘 다 끝내고 싶다' 같은 위험 신호를 드러낸다.", "text_rate": 0.6, "end_after": null, "verdict": "hold", "risk": true }
+  ]
+}
